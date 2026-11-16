@@ -17,8 +17,13 @@ public class FfmpegUpscaleRunner(HardwareProfile p, string ffmpeg, string? realE
         var tmpOut = job.OutputPath + ".part.mp4";
         try
         {
-            if (useAi) await AiPathAsync(job, fps, tmpOut, progress, ct);
-            else await Run(ffmpeg,
+            var done = false;
+            if (useAi)
+            {
+                try { await AiPathAsync(job, fps, tmpOut, progress, ct); done = true; }
+                catch (InvalidOperationException) { /* AI tool failed: fall back to Lanczos below */ }
+            }
+            if (!done) await Run(ffmpeg,
                 $"-y -i \"{job.InputPath}\" -vf scale={job.Target.W}:{job.Target.H}:flags=lanczos {FfmpegCommandBuilder.EncoderArgs(enc)} -pix_fmt yuv420p -c:a copy \"{tmpOut}\"", ct);
             File.Move(tmpOut, job.OutputPath, true);
             progress.Report(1);
