@@ -79,8 +79,9 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
     public async Task<RecordResult> StopAsync()
     {
         frames.Stop();
-        lock (_lock) CloseCurrent();
+        // Stop audio first: flushing the video encoder can take seconds, and audio must not outlast the video.
         var a = audio.Stop();
+        lock (_lock) CloseCurrent();
         _warnings.AddRange(a.Warnings);
 
         Directory.CreateDirectory(s.OutputDir);

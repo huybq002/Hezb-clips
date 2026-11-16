@@ -6,7 +6,20 @@ namespace HezbClips.Core.Hardware;
 /// <summary>Real probes that shell out to ffmpeg / realesrgan. Verified manually (see plan task 14).</summary>
 public static class HardwareProbes
 {
-    public static string FfmpegEncoders(string ffmpeg) => Run(ffmpeg, "-hide_banner -encoders", out _);
+    /// <summary>Lists encoders that actually work on this machine. `ffmpeg -encoders` lists h264_nvenc even
+    /// without an NVIDIA GPU, so each hardware candidate is verified with a one-frame test encode.</summary>
+    public static string FfmpegEncoders(string ffmpeg)
+    {
+        var listed = Run(ffmpeg, "-hide_banner -encoders", out _);
+        var working = new List<string> { "libx264" };
+        foreach (var name in new[] { "h264_nvenc", "h264_qsv", "h264_amf" })
+        {
+            if (!listed.Contains(name)) continue;
+            Run(ffmpeg, $"-hide_banner -loglevel error -f lavfi -i color=size=256x256:rate=1 -frames:v 1 -c:v {name} -f null -", out var code);
+            if (code == 0) working.Add(name);
+        }
+        return string.Join("\n", working.Select(n => $" V....D {n}"));
+    }
 
     public static bool Vulkan(string? realEsrganExe)
     {

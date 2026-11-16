@@ -27,8 +27,8 @@ public static class FfmpegCommandBuilder
         return wavs.Count switch
         {
             0 => $"-y {inputs}-c copy \"{outPath}\"",
-            1 => $"-y {inputs}-map 0:v -map 1:a -c:v copy -c:a aac -shortest \"{outPath}\"",
-            _ => $"-y {inputs}-filter_complex \"[1:a][2:a]amix=inputs=2:duration=longest[a]\" -map 0:v -map \"[a]\" -c:v copy -c:a aac -shortest \"{outPath}\"",
+            1 => $"-y {inputs}-map 0:v -map 1:a -c:v copy -c:a aac \"{outPath}\"",
+            _ => $"-y {inputs}-filter_complex \"[1:a][2:a]amix=inputs=2:duration=longest[a]\" -map 0:v -map \"[a]\" -c:v copy -c:a aac \"{outPath}\"",
         };
     }
 

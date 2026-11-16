@@ -16,6 +16,14 @@ public class WgcCaptureSource : ICaptureSource
         return Grab(WgcInterop.ItemForMonitor(mons[monitorIndex].Handle), null);
     }
 
+    /// <summary>Index (in capture order) of the monitor containing a physical-pixel point; 0 if none.</summary>
+    public static int MonitorIndexAt(System.Drawing.Point physical)
+    {
+        var mons = Native.Monitors();
+        for (int i = 0; i < mons.Count; i++) if (mons[i].Bounds.Contains(physical)) return i;
+        return 0;
+    }
+
     public Image<Rgba32> CaptureWindow(IntPtr hwnd) => Grab(WgcInterop.ItemForWindow(hwnd), null);
 
     public Image<Rgba32> CaptureRegion(Rectangle physicalPixels)
