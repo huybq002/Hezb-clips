@@ -3,10 +3,14 @@ namespace HezbClips.Core.Settings;
 public enum ExportQuality { P1080 = 1080, P1440 = 1440, P2160 = 2160 }
 public enum ImageFormat { Png, WebP, Jpeg }
 public enum VideoMode { Auto, Live, Background }
+public enum AppTheme { Dark, Light, System }
 
 public class AppSettings
 {
-    public ExportQuality Quality { get; set; } = ExportQuality.P1080;
+    public ExportQuality Quality { get; set; } = ExportQuality.P1440;
+    public ExportQuality VideoQuality { get; set; } = ExportQuality.P1080;
+    public AppTheme Theme { get; set; } = AppTheme.Dark;
+    public bool OpenEditorAfterCapture { get; set; } = true;
     public ImageFormat ImageFormat { get; set; } = ImageFormat.Png;
     public VideoMode VideoMode { get; set; } = VideoMode.Auto;
     public bool CaptureSystemAudio { get; set; } = true;

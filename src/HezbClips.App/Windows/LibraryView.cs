@@ -16,25 +16,29 @@ namespace HezbClips.App.Windows;
 
 /// <summary>Gallery of everything captured: images, videos, GIFs. Click a card to open it;
 /// card buttons: open, show in folder, copy, edit (images), delete (recycle bin).</summary>
-public sealed class LibraryWindow : Window
+public sealed class LibraryView : DockPanel
 {
-    readonly string _dir, _thumbCache;
+    readonly string _thumbCache;
     readonly string? _ffmpeg;
     readonly Action<string>? _edit;
-    readonly WrapPanel _grid = new() { Margin = new Thickness(12, 4, 12, 12) };
+    readonly WrapPanel _grid = new() { Margin = new Thickness(-6, 4, 0, 12) };
     readonly TextBlock _summary = new() { Foreground = Ui.Brush("TextDim"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock _empty = new() { Text = "Chưa có gì ở đây.\nChụp hoặc quay để bắt đầu.", Foreground = Ui.Brush("TextDim"), FontSize = 14, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 80, 0, 0), Visibility = Visibility.Collapsed };
     readonly List<ToggleButton> _chips = new();
     MediaKind? _filter;
     int _version;
 
-    public LibraryWindow(string outputDir, string? ffmpeg, string dataDir, Action<string>? edit)
-    {
-        _dir = outputDir; _ffmpeg = ffmpeg; _thumbCache = Path.Combine(dataDir, "thumbs"); _edit = edit;
-        Title = "Hezb Clips — Thư viện"; Width = 960; Height = 640; MinWidth = 520; MinHeight = 360;
-        Icon = Ui.Logo("logo.png", 64); Background = Ui.Brush("Bg"); WindowStartupLocation = WindowStartupLocation.CenterScreen;
+    string _dirValue;
+    string _dir => _dirValue;
 
-        var bar = new DockPanel { Margin = new Thickness(16, 14, 16, 6) };
+    /// <summary>Point the gallery at another folder (after Settings changed it).</summary>
+    public void SetFolder(string dir) { _dirValue = dir; _grid.Tag = null; Reload(); }
+
+    public LibraryView(string outputDir, string? ffmpeg, string dataDir, Action<string>? edit)
+    {
+        _dirValue = outputDir; _ffmpeg = ffmpeg; _thumbCache = Path.Combine(dataDir, "thumbs"); _edit = edit;
+
+        var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
         var right = new StackPanel { Orientation = Orientation.Horizontal };
         var openDir = new Button { Content = "📂 Mở thư mục", Margin = new Thickness(8, 0, 0, 0) };
         openDir.Click += (_, _) => { Directory.CreateDirectory(_dir); Process.Start("explorer.exe", $"\"{_dir}\""); };
@@ -55,12 +59,8 @@ public sealed class LibraryWindow : Window
         var body = new Grid();
         body.Children.Add(new ScrollViewer { Content = _grid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         body.Children.Add(_empty);
-        var root = new DockPanel();
-        DockPanel.SetDock(bar, Dock.Top); root.Children.Add(bar); root.Children.Add(body);
-        Content = root;
+        SetDock(bar, Dock.Top); Children.Add(bar); Children.Add(body);
         Loaded += (_, _) => Reload();
-        Activated += (_, _) => Reload();
-        KeyDown += (_, e) => { if (e.Key == Key.F5) { _grid.Tag = null; Reload(); } else if (e.Key == Key.Escape) Close(); };
     }
 
     public void Reload()

@@ -8,7 +8,7 @@ namespace HezbClips.App.Windows;
 /// <summary>Shared look: brushes/styles come from Theme.xaml.</summary>
 public static class Ui
 {
-    public static Brush Brush(string key) => (Brush)Application.Current.FindResource(key);
+    public static Brush Brush(string key) => ThemeManager.Get(key) ?? (Brush)Application.Current.FindResource(key);
     public static System.Windows.Media.Imaging.BitmapImage Logo(string name = "logo.png", int decodeWidth = 0)
     {
         var b = new System.Windows.Media.Imaging.BitmapImage();

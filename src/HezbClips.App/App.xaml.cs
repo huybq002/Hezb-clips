@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading;
 using System.Windows;
 
@@ -14,7 +15,7 @@ public partial class App : Application
         _single = new Mutex(true, "HezbClips.SingleInstance", out var created);
         if (!created) { Shutdown(); return; }
         _controller = new AppController(this);
-        _controller.Start();
+        _controller.Start(showMain: !e.Args.Contains("--tray"));
     }
 
     protected override void OnExit(ExitEventArgs e)

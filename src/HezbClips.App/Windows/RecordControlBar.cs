@@ -44,7 +44,7 @@ public sealed class RecordControlBar : Window
         AllowsTransparency = true; Background = Brushes.Transparent;
         _sys.IsChecked = s.CaptureSystemAudio; _mic.IsChecked = s.CaptureMicrophone;
         _quality.Items.Add("1080p"); _quality.Items.Add("2K"); _quality.Items.Add("4K");
-        _quality.SelectedIndex = s.Quality switch { ExportQuality.P1440 => 1, ExportQuality.P2160 => 2, _ => 0 };
+        _quality.SelectedIndex = s.VideoQuality switch { ExportQuality.P1440 => 1, ExportQuality.P2160 => 2, _ => 0 };
 
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         foreach (var c in new UIElement[] { _sys, _mic, _gif, _quality, _dot, _timer, _go, _cancel }) row.Children.Add(c);

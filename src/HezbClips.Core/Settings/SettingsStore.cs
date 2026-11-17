@@ -13,6 +13,7 @@ public class SettingsStore(string path)
             if (!File.Exists(path)) return new AppSettings();
             var s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
             if (!Enum.IsDefined(s.Quality)) s.Quality = ExportQuality.P1080;
+            if (!Enum.IsDefined(s.VideoQuality)) s.VideoQuality = ExportQuality.P1080;
             return s;
         }
         catch (JsonException) { return new AppSettings(); }

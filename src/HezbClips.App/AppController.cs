@@ -38,8 +38,8 @@ public sealed class AppController : IDisposable
     BackgroundUpscaleQueue? _queue;
     VideoRecorder? _recorder;
     RecordControlBar? _bar;
-    SettingsWindow? _settingsWindow;
-    bool _busy, _recording;
+    MainWindow? _main;
+    bool _busy, _recording, _restoreMain;
 
     public AppController(Application app)
     {
@@ -49,8 +49,9 @@ public sealed class AppController : IDisposable
         _s = _store.Load();
     }
 
-    public void Start()
+    public void Start(bool showMain = true)
     {
+        ThemeManager.Apply(_s.Theme);
         _tray = new TrayHost(() => _ = RegionShotAsync(), () => _ = FullShotAsync(), () => _ = ToggleRecordAsync(), OpenSettings, () => _app.Shutdown(), OpenLibrary);
         _hk = new Win32Hotkeys();
         _hotkeys = new HotkeyService(_hk);
@@ -64,6 +65,7 @@ public sealed class AppController : IDisposable
             DetectHardware(force: false);
         if (_failures.Count > 0)
             _tray.Balloon("Phím tắt bị chiếm", string.Join(", ", _failures.Select(f => f.Combo)) + ". Bấm để đổi trong Cài đặt.", OpenSettings);
+        if (showMain) OpenLibrary();
     }
 
     void Report(string title, Exception ex)
@@ -151,31 +153,52 @@ public sealed class AppController : IDisposable
     {
         if (_busy || _recording) return;
         _busy = true;
+        await HideMainAsync();
         try
         {
             var r = await RegionSelector.SelectAsync();
             if (r is null) return;
             await Task.Delay(150); // let the overlay disappear before capturing
             var path = await Task.Run(() => Shots().TakeRegionAsync(r.Value));
-            ShowPopup(path, false, null);
+            AfterImage(path);
         }
         catch (Exception ex) { Report("Lỗi chụp ảnh", ex); }
-        finally { _busy = false; }
+        finally { _busy = false; RestoreMain(); }
+    }
+
+    /// <summary>Hide the main window while capturing so it never ends up in the shot.</summary>
+    async Task HideMainAsync()
+    {
+        if (_main is { IsVisible: true }) { _restoreMain = true; _main.Hide(); await Task.Delay(250); }
+    }
+
+    void RestoreMain()
+    {
+        if (!_restoreMain) return;
+        _restoreMain = false;
+        if (_main is not null) { _main.Show(); _main.RefreshLibrary(); }
+    }
+
+    /// <summary>Captured image: open the editor right away (or the quick popup when that is turned off).</summary>
+    void AfterImage(string path)
+    {
+        if (_s.OpenEditorAfterCapture) OpenEditor(path); else ShowPopup(path, false, null);
     }
 
     async Task FullShotAsync()
     {
         if (_busy || _recording) return;
         _busy = true;
+        await HideMainAsync();
         try
         {
             var p = System.Windows.Forms.Cursor.Position;
             var idx = WgcCaptureSource.MonitorIndexAt(new System.Drawing.Point(p.X, p.Y));
             var path = await Task.Run(() => Shots().TakeScreenAsync(idx));
-            ShowPopup(path, false, null);
+            AfterImage(path);
         }
         catch (Exception ex) { Report("Lỗi chụp ảnh", ex); }
-        finally { _busy = false; }
+        finally { _busy = false; RestoreMain(); }
     }
 
     // ---- recording ----
@@ -183,7 +206,7 @@ public sealed class AppController : IDisposable
     async Task ToggleRecordAsync(bool gif = false)
     {
         if (_recording) { await StopRecordingAsync(); return; }
-        if (_bar is not null) { _bar.Close(); _bar = null; return; } // hotkey again cancels the pending record bar
+        if (_bar is not null) { _bar.Close(); _bar = null; RestoreMain(); return; } // hotkey again cancels the pending record bar
         if (_busy) return;
         if (_recorder is null)
         {
@@ -192,6 +215,8 @@ public sealed class AppController : IDisposable
             return;
         }
         _busy = true;
+        await HideMainAsync();
+        var barShown = false;
         try
         {
             var region = await RegionSelector.SelectAsync();
@@ -201,10 +226,11 @@ public sealed class AppController : IDisposable
             if (gif) bar.PresetGif();
             bar.RecordClicked += (audio, quality, asGif) => StartRecording(region.Value, audio, quality, asGif);
             bar.StopClicked += () => _ = StopRecordingAsync();
-            bar.Cancelled += () => { bar.Close(); _bar = null; };
+            bar.Cancelled += () => { bar.Close(); _bar = null; RestoreMain(); };
             bar.Show();
+            barShown = true;
         }
-        finally { _busy = false; }
+        finally { _busy = false; if (!barShown) RestoreMain(); } // with the bar up, main stays hidden until stop/cancel
     }
 
     bool _gifMode;
@@ -264,6 +290,7 @@ public sealed class AppController : IDisposable
             else _tray?.Balloon("Hezb Clips", "Đang ghép video (upscale phần cuối ở nền). Sẽ báo khi xong.");
         }
         catch (Exception ex) { Report("Lỗi khi dừng quay", ex); }
+        finally { RestoreMain(); }
     }
 
     // ---- popup / trim / settings ----
@@ -289,14 +316,27 @@ public sealed class AppController : IDisposable
         catch (Exception ex) { _app.Dispatcher.Invoke(() => Report("Tạo GIF lỗi", ex)); return null; }
     }
 
-    LibraryWindow? _library;
+    void OpenLibrary() => OpenMain(settings: false);
 
-    void OpenLibrary()
+    void OpenSettings() => OpenMain(settings: true);
+
+    /// <summary>Show the single main window (library, or the settings sections when asked).</summary>
+    void OpenMain(bool settings)
     {
-        if (_library is not null) { _library.Activate(); return; }
-        _library = new LibraryWindow(_s.OutputDir, _ffmpeg, _dataDir, OpenEditor);
-        _library.Closed += (_, _) => _library = null;
-        _library.Show(); _library.Activate();
+        if (_main is null)
+        {
+            _main = new MainWindow(_s, _ffmpeg, _dataDir, _failures, new MainActions(
+                Region: () => _ = RegionShotAsync(), Full: () => _ = FullShotAsync(),
+                Record: () => _ = ToggleRecordAsync(), Gif: () => _ = ToggleRecordAsync(gif: true),
+                Edit: OpenEditor, Save: OnSettingsSaved,
+                Redetect: () => { if (_ffmpeg is not null) DetectHardware(force: true); },
+                Theme: ThemeManager.Apply));
+            _main.Closed += (_, _) => _main = null;
+        }
+        if (!_main.IsVisible) _main.Show();
+        if (_main.WindowState == WindowState.Minimized) _main.WindowState = WindowState.Normal;
+        if (settings) _main.ShowSettings(); else _main.ShowLibrary();
+        _main.Activate();
     }
 
     void OpenEditor(string imagePath)
@@ -322,24 +362,17 @@ public sealed class AppController : IDisposable
         catch (Exception ex) { Report("Cắt video lỗi", ex); return null; }
     }
 
-    void OpenSettings()
-    {
-        if (_settingsWindow is not null) { _settingsWindow.Activate(); return; }
-        _settingsWindow = new SettingsWindow(_s, _failures, OnSettingsSaved, () => { if (_ffmpeg is not null) DetectHardware(force: true); });
-        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        _settingsWindow.Show();
-    }
-
     void OnSettingsSaved(AppSettings s)
     {
         _store.Save(_s);
         RegisterHotkeys();
+        _main?.SetFolder(_s.OutputDir);
         if (_failures.Count > 0)
             _tray?.Balloon("Phím tắt bị chiếm", string.Join(", ", _failures.Select(f => f.Combo)));
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
-            if (_s.StartWithWindows) key?.SetValue("HezbClips", Environment.ProcessPath ?? "");
+            if (_s.StartWithWindows) key?.SetValue("HezbClips", $"\"{Environment.ProcessPath}\" --tray");
             else key?.DeleteValue("HezbClips", throwOnMissingValue: false);
         }
         catch (Exception) { /* registry blocked: ignore */ }

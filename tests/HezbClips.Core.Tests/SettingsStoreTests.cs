@@ -18,8 +18,9 @@ public class SettingsStoreTests
     public void Missing_or_corrupt_file_gives_defaults()
     {
         var p = Path.GetTempFileName(); File.WriteAllText(p, "{not json");
-        Assert.Equal(ExportQuality.P1080, new SettingsStore(p).Load().Quality);
-        Assert.Equal(ExportQuality.P1080, new SettingsStore(p + ".none").Load().Quality);
+        Assert.Equal(ExportQuality.P1440, new SettingsStore(p).Load().Quality);
+        Assert.Equal(ExportQuality.P1440, new SettingsStore(p + ".none").Load().Quality);
+        Assert.Equal(ExportQuality.P1080, new AppSettings().VideoQuality);
     }
 
     [Fact]
