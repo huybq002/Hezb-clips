@@ -184,6 +184,7 @@ public sealed class AppController : IDisposable
         if (_busy) return;
         if (_recorder is null)
         {
+            Report("Record not ready", new InvalidOperationException($"ffmpeg={_ffmpeg ?? "null"}"));
             _tray?.Balloon("Hezb Clips", _ffmpeg is null ? "Chưa có ffmpeg nên chưa quay được." : "Đang dò cấu hình máy, thử lại sau vài giây.");
             return;
         }
