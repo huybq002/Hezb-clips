@@ -92,7 +92,7 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
         if (segs.Count == 1)
         {
             await RunFfmpeg(FfmpegCommandBuilder.MuxArgs(segs[0].Path, a.SystemWav, a.MicWav, final));
-            if (!segs[0].Scaled)
+            if (!segs[0].Scaled && !_req.SkipUpscale)
             {
                 var up = Path.ChangeExtension(final, null) + $"_{(int)_req.Quality}p.mp4";
                 job = queue.Enqueue(final, up, _target);

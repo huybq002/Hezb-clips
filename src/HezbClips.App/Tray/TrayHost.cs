@@ -10,7 +10,7 @@ public sealed class TrayHost : IDisposable
     readonly ToolStripMenuItem _record;
     Action? _balloonClick;
 
-    public TrayHost(Action regionShot, Action fullShot, Action toggleRecord, Action settings, Action exit)
+    public TrayHost(Action regionShot, Action fullShot, Action toggleRecord, Action settings, Action exit, Action library)
     {
         var menu = new ContextMenuStrip();
         menu.Items.Add("Chụp vùng", null, (_, _) => regionShot());
@@ -18,10 +18,11 @@ public sealed class TrayHost : IDisposable
         _record = new ToolStripMenuItem("Quay màn hình", null, (_, _) => toggleRecord());
         menu.Items.Add(_record);
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Thư viện", null, (_, _) => library());
         menu.Items.Add("Cài đặt", null, (_, _) => settings());
         menu.Items.Add("Thoát", null, (_, _) => exit());
         _icon = new NotifyIcon { Icon = LoadIcon(), Text = "Hezb Clips", ContextMenuStrip = menu, Visible = true };
-        _icon.DoubleClick += (_, _) => settings();
+        _icon.DoubleClick += (_, _) => library();
         _icon.BalloonTipClicked += (_, _) => _balloonClick?.Invoke();
     }
 

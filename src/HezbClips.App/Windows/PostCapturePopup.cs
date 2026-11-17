@@ -23,7 +23,7 @@ public sealed class PostCapturePopup : Window
     readonly bool _video;
 
     /// <param name="trim">Called with (path, from, to); returns the trimmed file path.</param>
-    public PostCapturePopup(string path, bool isVideo, string? note, Func<string, TimeSpan, TimeSpan, string?> trim)
+    public PostCapturePopup(string path, bool isVideo, string? note, Func<string, TimeSpan, TimeSpan, string?> trim, Action<string>? edit = null)
     {
         _path = path; _video = isVideo;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; Topmost = true; ShowInTaskbar = false;
@@ -39,6 +39,7 @@ public sealed class PostCapturePopup : Window
         copyBtn.Click += (_, _) => { if (Copy()) FlashCopied(copyBtn); };
         B("📂 Mở thư mục", () => Process.Start("explorer.exe", $"/select,\"{_path}\""));
         B("🗑 Xóa", () => { try { File.Delete(_path); } catch (IOException) { } Close(); });
+        if (!isVideo && edit is not null && Path.GetExtension(path).ToLowerInvariant() != ".gif") B("✏ Sửa", () => { edit(_path); Close(); });
         if (isVideo) B("✂ Cắt", () => _trimPanel.Visibility = Visibility.Visible);
 
         var apply = new Button { Content = "Cắt ngay", Padding = new Thickness(10, 5, 10, 5), Style = Ui.Style("PrimaryButton") };

@@ -17,5 +17,8 @@ public class AppSettings
     public string HotkeyRegionShot { get; set; } = "Ctrl+Shift+S";
     public string HotkeyFullShot { get; set; } = "Ctrl+Shift+F";
     public string HotkeyRecord { get; set; } = "Ctrl+Shift+R";
+    public string HotkeyGif { get; set; } = "Ctrl+Shift+G";
+    public string HotkeyLibrary { get; set; } = "Ctrl+Shift+L";
+    public Dictionary<string, string> EditorKeys { get; set; } = new(EditorShortcuts.Defaults);
     public bool StartWithWindows { get; set; } = false;
 }

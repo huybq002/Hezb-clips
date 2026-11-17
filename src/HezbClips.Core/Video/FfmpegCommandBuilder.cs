@@ -34,4 +34,11 @@ public static class FfmpegCommandBuilder
 
     public static string ConcatArgs(string listFilePath, string outPath) =>
         $"-y -f concat -safe 0 -i \"{listFilePath}\" -c copy \"{outPath}\"";
+
+    /// <summary>Longest GIF recording allowed.</summary>
+    public static readonly TimeSpan GifMaxDuration = TimeSpan.FromSeconds(60);
+
+    /// <summary>Convert a recorded clip to an optimized GIF (shared palette, lanczos downscale to maxWidth).</summary>
+    public static string GifArgs(string inputPath, string outPath, int fps = 15, int maxWidth = 960) =>
+        $"-y -i \"{inputPath}\" -an -vf \"fps={fps},scale='min({maxWidth},iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4\" -loop 0 \"{outPath}\"";
 }

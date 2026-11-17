@@ -22,6 +22,7 @@ public sealed class RecordControlBar : Window
 
     readonly ToggleButton _sys = new() { Content = "🔊 Âm thanh máy", Margin = new Thickness(0, 0, 6, 0) };
     readonly ToggleButton _mic = new() { Content = "🎤 Mic", Margin = new Thickness(0, 0, 8, 0) };
+    readonly ToggleButton _gif = new() { Content = "GIF ≤60s", Margin = new Thickness(0, 0, 8, 0), ToolTip = "Quay thành ảnh GIF, tối đa 60 giây, không có âm thanh" };
     readonly ComboBox _quality = new() { Margin = new Thickness(0, 0, 10, 0), Width = 76 };
     readonly System.Windows.Shapes.Ellipse _dot = new() { Width = 9, Height = 9, Fill = Ui.Brush("Disabled"), VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock _timer = new() { Text = "00:00", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0), FontFamily = new FontFamily("Consolas"), FontSize = 15, Foreground = Ui.Brush("Text") };
@@ -31,7 +32,7 @@ public sealed class RecordControlBar : Window
     readonly System.Drawing.Rectangle _region;
     DateTime _startedAt; bool _recording;
 
-    public event Action<AudioSources, ExportQuality>? RecordClicked;
+    public event Action<AudioSources, ExportQuality, bool>? RecordClicked;
     public event Action? StopClicked;
     public event Action? Cancelled;
 
@@ -46,14 +47,32 @@ public sealed class RecordControlBar : Window
         _quality.SelectedIndex = s.Quality switch { ExportQuality.P1440 => 1, ExportQuality.P2160 => 2, _ => 0 };
 
         var row = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var c in new UIElement[] { _sys, _mic, _quality, _dot, _timer, _go, _cancel }) row.Children.Add(c);
+        foreach (var c in new UIElement[] { _sys, _mic, _gif, _quality, _dot, _timer, _go, _cancel }) row.Children.Add(c);
         Content = Ui.Card(row, 10);
 
+        _gif.Click += (_, _) =>
+        {
+            var g = _gif.IsChecked == true;
+            _sys.IsEnabled = _mic.IsEnabled = _quality.IsEnabled = !g;
+            _timer.Text = g ? "00:00 / 01:00" : "00:00";
+        };
         _go.Click += (_, _) => OnGo();
         _cancel.Click += (_, _) => Cancelled?.Invoke();
-        _tick.Tick += (_, _) => _timer.Text = (DateTime.UtcNow - _startedAt).ToString(@"mm\:ss");
+        _tick.Tick += (_, _) =>
+        {
+            var t = (DateTime.UtcNow - _startedAt).ToString(@"mm\:ss");
+            _timer.Text = _gif.IsChecked == true ? t + " / 01:00" : t;
+        };
         SourceInitialized += (_, _) => SetWindowDisplayAffinity(new WindowInteropHelper(this).Handle, WDA_EXCLUDEFROMCAPTURE);
         Loaded += (_, _) => PlaceNearRegion();
+    }
+
+    /// <summary>Open with GIF mode already on (GIF hotkey).</summary>
+    public void PresetGif()
+    {
+        _gif.IsChecked = true;
+        _sys.IsEnabled = _mic.IsEnabled = _quality.IsEnabled = false;
+        _timer.Text = "00:00 / 01:00";
     }
 
     void OnGo()
@@ -62,9 +81,10 @@ public sealed class RecordControlBar : Window
         var q = _quality.SelectedIndex switch { 1 => ExportQuality.P1440, 2 => ExportQuality.P2160, _ => ExportQuality.P1080 };
         var a = (_sys.IsChecked == true ? AudioSources.System : 0) | (_mic.IsChecked == true ? AudioSources.Microphone : 0);
         _recording = true; _startedAt = DateTime.UtcNow; _tick.Start();
-        _sys.IsEnabled = _mic.IsEnabled = _quality.IsEnabled = _cancel.IsEnabled = false;
+        var isGif = _gif.IsChecked == true;
+        _sys.IsEnabled = _mic.IsEnabled = _quality.IsEnabled = _gif.IsEnabled = _cancel.IsEnabled = false;
         _go.Content = "⏹ Dừng"; _dot.Fill = Ui.Brush("Danger");
-        RecordClicked?.Invoke(a, q);
+        RecordClicked?.Invoke(a, q, isGif);
     }
 
     void PlaceNearRegion()

@@ -51,7 +51,7 @@ public sealed class AppController : IDisposable
 
     public void Start()
     {
-        _tray = new TrayHost(() => _ = RegionShotAsync(), () => _ = FullShotAsync(), () => _ = ToggleRecordAsync(), OpenSettings, () => _app.Shutdown());
+        _tray = new TrayHost(() => _ = RegionShotAsync(), () => _ = FullShotAsync(), () => _ = ToggleRecordAsync(), OpenSettings, () => _app.Shutdown(), OpenLibrary);
         _hk = new Win32Hotkeys();
         _hotkeys = new HotkeyService(_hk);
         _hk.Pressed += OnHotkey;
@@ -81,6 +81,7 @@ public sealed class AppController : IDisposable
         _failures = _hotkeys.RegisterAll(new Dictionary<string, string>
         {
             ["RegionShot"] = _s.HotkeyRegionShot, ["FullShot"] = _s.HotkeyFullShot, ["Record"] = _s.HotkeyRecord,
+            ["Gif"] = _s.HotkeyGif, ["Library"] = _s.HotkeyLibrary,
         });
     }
 
@@ -92,6 +93,8 @@ public sealed class AppController : IDisposable
                 case "RegionShot": _ = RegionShotAsync(); break;
                 case "FullShot": _ = FullShotAsync(); break;
                 case "Record": _ = ToggleRecordAsync(); break;
+                case "Gif": _ = ToggleRecordAsync(gif: true); break;
+                case "Library": OpenLibrary(); break;
             }
     }
 
@@ -177,7 +180,7 @@ public sealed class AppController : IDisposable
 
     // ---- recording ----
 
-    async Task ToggleRecordAsync()
+    async Task ToggleRecordAsync(bool gif = false)
     {
         if (_recording) { await StopRecordingAsync(); return; }
         if (_bar is not null) { _bar.Close(); _bar = null; return; } // hotkey again cancels the pending record bar
@@ -195,7 +198,8 @@ public sealed class AppController : IDisposable
             if (region is null) return;
             var bar = new RecordControlBar(region.Value, _s);
             _bar = bar;
-            bar.RecordClicked += (audio, quality) => StartRecording(region.Value, audio, quality);
+            if (gif) bar.PresetGif();
+            bar.RecordClicked += (audio, quality, asGif) => StartRecording(region.Value, audio, quality, asGif);
             bar.StopClicked += () => _ = StopRecordingAsync();
             bar.Cancelled += () => { bar.Close(); _bar = null; };
             bar.Show();
@@ -203,12 +207,25 @@ public sealed class AppController : IDisposable
         finally { _busy = false; }
     }
 
-    void StartRecording(System.Drawing.Rectangle region, AudioSources audio, ExportQuality quality)
+    bool _gifMode;
+    System.Windows.Threading.DispatcherTimer? _gifLimit;
+
+    void StartRecording(System.Drawing.Rectangle region, AudioSources audio, ExportQuality quality, bool gif)
     {
         try
         {
-            var mode = ModeSelector.Choose(_profile, quality, _s.VideoMode);
-            _recorder!.Start(new RecordRequest(region, _s.Fps, audio, quality, mode));
+            // GIF: native-size capture at 15 fps, no audio, no upscale; converted to .gif on stop and capped at 60 s.
+            var req = gif
+                ? new RecordRequest(region, 15, AudioSources.None, ExportQuality.P1080, RecordMode.Background, SkipUpscale: true)
+                : new RecordRequest(region, _s.Fps, audio, quality, ModeSelector.Choose(_profile, quality, _s.VideoMode));
+            _recorder!.Start(req);
+            _gifMode = gif;
+            if (gif)
+            {
+                _gifLimit = new System.Windows.Threading.DispatcherTimer { Interval = FfmpegCommandBuilder.GifMaxDuration };
+                _gifLimit.Tick += (_, _) => { _gifLimit?.Stop(); _ = StopRecordingAsync(); };
+                _gifLimit.Start();
+            }
             _recording = true;
             _tray?.SetRecording(true);
             _quality = quality;
@@ -226,11 +243,20 @@ public sealed class AppController : IDisposable
     {
         if (!_recording) return;
         _recording = false;
+        _gifLimit?.Stop(); _gifLimit = null;
+        var wasGif = _gifMode; _gifMode = false;
         _tray?.SetRecording(false);
         _bar?.Close(); _bar = null;
         try
         {
             var r = await Task.Run(() => _recorder!.StopAsync());
+            if (wasGif)
+            {
+                var gifPath = await Task.Run(() => ConvertToGif(r.FinalPath));
+                if (gifPath is not null) ShowPopup(gifPath, false, "GIF tối đa 60 giây, rộng tối đa 960 px.");
+                else _tray?.Balloon("Hezb Clips", "Không tạo được GIF. Video gốc vẫn được giữ: " + Path.GetFileName(r.FinalPath));
+                return;
+            }
             var notes = new List<string>(r.Warnings);
             if (r.PendingUpscaleJob is not null && File.Exists(r.FinalPath))
                 notes.Add($"Đang upscale lên {(int)_quality}p ở nền; file mới sẽ có tên *_{(int)_quality}p.mp4.");
@@ -244,8 +270,43 @@ public sealed class AppController : IDisposable
 
     void ShowPopup(string path, bool video, string? note)
     {
-        var popup = new PostCapturePopup(path, video, note, TrimVideo);
+        var popup = new PostCapturePopup(path, video, note, TrimVideo, OpenEditor);
         popup.Show();
+    }
+
+    string? ConvertToGif(string mp4)
+    {
+        if (_ffmpeg is null || !File.Exists(mp4)) return null;
+        var gif = Path.ChangeExtension(mp4, ".gif");
+        try
+        {
+            var p = new FfmpegProcess(_ffmpeg);
+            p.Start(FfmpegCommandBuilder.GifArgs(mp4, gif));
+            if (p.ExitAsync().GetAwaiter().GetResult() != 0 || !File.Exists(gif)) return null;
+            File.Delete(mp4);
+            return gif;
+        }
+        catch (Exception ex) { _app.Dispatcher.Invoke(() => Report("Tạo GIF lỗi", ex)); return null; }
+    }
+
+    LibraryWindow? _library;
+
+    void OpenLibrary()
+    {
+        if (_library is not null) { _library.Activate(); return; }
+        _library = new LibraryWindow(_s.OutputDir, _ffmpeg, _dataDir, OpenEditor);
+        _library.Closed += (_, _) => _library = null;
+        _library.Show(); _library.Activate();
+    }
+
+    void OpenEditor(string imagePath)
+    {
+        try
+        {
+            var w = new ImageEditorWindow(imagePath, _s.EditorKeys);
+            w.Show(); w.Activate();
+        }
+        catch (Exception ex) { Report("Không mở được trình chỉnh sửa", ex); }
     }
 
     string? TrimVideo(string path, TimeSpan from, TimeSpan to)
