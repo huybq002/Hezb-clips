@@ -20,9 +20,20 @@ public sealed class TrayHost : IDisposable
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Cài đặt", null, (_, _) => settings());
         menu.Items.Add("Thoát", null, (_, _) => exit());
-        _icon = new NotifyIcon { Icon = SystemIcons.Application, Text = "Hezb Clips", ContextMenuStrip = menu, Visible = true };
+        _icon = new NotifyIcon { Icon = LoadIcon(), Text = "Hezb Clips", ContextMenuStrip = menu, Visible = true };
         _icon.DoubleClick += (_, _) => settings();
         _icon.BalloonTipClicked += (_, _) => _balloonClick?.Invoke();
+    }
+
+    static Icon LoadIcon()
+    {
+        try
+        {
+            var info = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"));
+            if (info is not null) return new Icon(info.Stream, SystemInformation.SmallIconSize);
+        }
+        catch (Exception) { /* fall back */ }
+        return SystemIcons.Application;
     }
 
     public void SetRecording(bool on) => _record.Text = on ? "Dừng quay" : "Quay màn hình";

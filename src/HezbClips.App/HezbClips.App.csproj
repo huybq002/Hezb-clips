@@ -10,7 +10,14 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>HezbClips</AssemblyName>
     <RootNamespace>HezbClips.App</RootNamespace>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets/app.ico" />
+    <Resource Include="Assets/logo.png" />
+    <Resource Include="Assets/logo-full.png" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\HezbClips.Core\HezbClips.Core.csproj" />

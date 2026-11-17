@@ -21,7 +21,7 @@ public sealed class SettingsWindow : Window
         _s = s;
         Title = "Hezb Clips — Cài đặt"; Width = 460; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Background = Ui.Brush("Bg"); Foreground = Ui.Brush("Text");
+        Icon = Ui.Logo("logo.png", 64); Background = Ui.Brush("Bg"); Foreground = Ui.Brush("Text");
 
         _quality.ItemsSource = new[] { "1080p (Full HD)", "1440p (2K)", "2160p (4K)" };
         _quality.SelectedIndex = s.Quality switch { ExportQuality.P1440 => 1, ExportQuality.P2160 => 2, _ => 0 };
@@ -38,8 +38,12 @@ public sealed class SettingsWindow : Window
         }
 
         var panel = new StackPanel { Margin = new Thickness(20) };
-        panel.Children.Add(new TextBlock { Text = "Hezb Clips", FontSize = 20, FontWeight = FontWeights.Bold, Foreground = Ui.Brush("Text") });
-        panel.Children.Add(new TextBlock { Text = "Chụp và quay màn hình chất lượng cao", FontSize = 12, Foreground = Ui.Brush("TextDim"), Margin = new Thickness(0, 0, 0, 6) });
+        var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+        head.Children.Add(new Image { Source = Ui.Logo("logo.png", 96), Width = 44, Height = 44, Margin = new Thickness(0, 0, 12, 0) });
+        var titles = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        titles.Children.Add(new TextBlock { Text = "Hezb Clips", FontSize = 20, FontWeight = FontWeights.Bold, Foreground = Ui.Brush("Text") });
+        titles.Children.Add(new TextBlock { Text = "Chụp và quay màn hình chất lượng cao", FontSize = 12, Foreground = Ui.Brush("TextDim") });
+        head.Children.Add(titles); panel.Children.Add(head);
         void Row(string label, UIElement c) { panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 12, 0, 4), FontWeight = FontWeights.SemiBold, FontSize = 12, Foreground = Ui.Brush("TextDim") }); panel.Children.Add(c); }
         Row("Chất lượng xuất", _quality);
         panel.Children.Add(new TextBlock

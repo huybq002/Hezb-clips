@@ -34,7 +34,9 @@ public sealed class PostCapturePopup : Window
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         Button B(string t, Action a) { var b = new Button { Content = t, Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(10, 5, 10, 5) }; b.Click += (_, _) => a(); buttons.Children.Add(b); return b; }
-        B("📋 Copy", Copy).Style = Ui.Style("PrimaryButton");
+        var copyBtn = B("📋 Copy", () => { });
+        copyBtn.Style = Ui.Style("PrimaryButton");
+        copyBtn.Click += (_, _) => { if (Copy()) FlashCopied(copyBtn); };
         B("📂 Mở thư mục", () => Process.Start("explorer.exe", $"/select,\"{_path}\""));
         B("🗑 Xóa", () => { try { File.Delete(_path); } catch (IOException) { } Close(); });
         if (isVideo) B("✂ Cắt", () => _trimPanel.Visibility = Visibility.Visible);
@@ -84,7 +86,25 @@ public sealed class PostCapturePopup : Window
         catch (Exception) { return null; } // e.g. WebP is not decodable by WPF: show no thumbnail
     }
 
-    void Copy()
+    static void FlashCopied(Button b)
+    {
+        var accent = ((SolidColorBrush)Ui.Brush("Accent")).Color;
+        var brush = new SolidColorBrush(Color.FromRgb(46, 160, 67));
+        b.Background = brush; b.Content = "✓ Đã copy";
+        b.RenderTransformOrigin = new Point(0.5, 0.5);
+        var st = new ScaleTransform(1, 1); b.RenderTransform = st;
+        var pulse = new System.Windows.Media.Animation.DoubleAnimation(1, 1.12, TimeSpan.FromMilliseconds(120)) { AutoReverse = true };
+        st.BeginAnimation(ScaleTransform.ScaleXProperty, pulse); st.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
+        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1600) };
+        t.Tick += (_, _) =>
+        {
+            t.Stop(); b.Content = "📋 Copy";
+            brush.BeginAnimation(SolidColorBrush.ColorProperty, new System.Windows.Media.Animation.ColorAnimation(accent, TimeSpan.FromMilliseconds(250)));
+        };
+        t.Start();
+    }
+
+    bool Copy()
     {
         try
         {
@@ -99,7 +119,8 @@ public sealed class PostCapturePopup : Window
                 var list = new System.Collections.Specialized.StringCollection { _path };
                 Clipboard.SetFileDropList(list);
             }
+            return true;
         }
-        catch (Exception) { /* clipboard busy: ignore */ }
+        catch (Exception) { return false; /* clipboard busy */ }
     }
 }

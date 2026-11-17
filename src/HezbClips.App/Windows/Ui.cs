@@ -9,6 +9,15 @@ namespace HezbClips.App.Windows;
 public static class Ui
 {
     public static Brush Brush(string key) => (Brush)Application.Current.FindResource(key);
+    public static System.Windows.Media.Imaging.BitmapImage Logo(string name = "logo.png", int decodeWidth = 0)
+    {
+        var b = new System.Windows.Media.Imaging.BitmapImage();
+        b.BeginInit(); b.UriSource = new System.Uri("pack://application:,,,/Assets/" + name);
+        if (decodeWidth > 0) b.DecodePixelWidth = decodeWidth;
+        b.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; b.EndInit(); b.Freeze();
+        return b;
+    }
+
     public static Style Style(string key) => (Style)Application.Current.FindResource(key);
 
     /// <summary>Rounded dark card with soft shadow. Host window must set AllowsTransparency + transparent background.</summary>
