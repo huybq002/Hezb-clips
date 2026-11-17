@@ -7,7 +7,7 @@ public enum AppTheme { Dark, Light, System }
 
 public class AppSettings
 {
-    public ExportQuality Quality { get; set; } = ExportQuality.P1440;
+    public ExportQuality Quality { get; set; } = ExportQuality.P1080;
     public ExportQuality VideoQuality { get; set; } = ExportQuality.P1080;
     public AppTheme Theme { get; set; } = AppTheme.Dark;
     public bool OpenEditorAfterCapture { get; set; } = true;
