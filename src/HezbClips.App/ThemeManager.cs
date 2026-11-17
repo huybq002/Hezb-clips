@@ -30,16 +30,32 @@ public static class ThemeManager
         }
     }
 
+    public static bool IsDark { get; private set; } = true;
+    public static event Action? Changed;
+
     public static void Apply(AppTheme theme)
     {
         Init();
         var dark = theme switch { AppTheme.Dark => true, AppTheme.Light => false, _ => !SystemUsesLight() };
+        IsDark = dark;
         foreach (var (key, d, l) in Colors)
         {
             var c = (Color)ColorConverter.ConvertFromString(dark ? d : l);
             Brushes[key].Color = c;                                   // code-built UI: shared brush, recoloured in place
             Application.Current.Resources[key] = new SolidColorBrush(c); // XAML templates: DynamicResource swaps to the new brush
         }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Whether the Windows taskbar is light (for choosing the tray icon).</summary>
+    public static bool TaskbarIsLight()
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return k?.GetValue("SystemUsesLightTheme") is int v && v != 0;
+        }
+        catch (Exception) { return false; }
     }
 
     /// <summary>Shared mutable brush for code-built UI, or null when the key is not a theme colour.</summary>

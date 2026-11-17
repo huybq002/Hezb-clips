@@ -30,7 +30,7 @@ public sealed class TrayHost : IDisposable
     {
         try
         {
-            var info = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"));
+            var info = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/" + "app-light.ico"));
             if (info is not null) return new Icon(info.Stream, SystemInformation.SmallIconSize);
         }
         catch (Exception) { /* fall back */ }

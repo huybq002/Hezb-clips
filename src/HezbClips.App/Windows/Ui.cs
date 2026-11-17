@@ -9,7 +9,7 @@ namespace HezbClips.App.Windows;
 public static class Ui
 {
     public static Brush Brush(string key) => ThemeManager.Get(key) ?? (Brush)Application.Current.FindResource(key);
-    public static System.Windows.Media.Imaging.BitmapImage Logo(string name = "logo.png", int decodeWidth = 0)
+    public static System.Windows.Media.Imaging.BitmapImage Logo(string name = "logo-dark.png", int decodeWidth = 0)
     {
         var b = new System.Windows.Media.Imaging.BitmapImage();
         b.BeginInit(); b.UriSource = new System.Uri("pack://application:,,,/Assets/" + name);
@@ -17,6 +17,24 @@ public static class Ui
         b.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; b.EndInit(); b.Freeze();
         return b;
     }
+
+    /// <summary>Logo image that swaps between the dark and light variants when the theme changes.</summary>
+    public sealed class LogoImage : System.Windows.Controls.Image
+    {
+        public LogoImage()
+        {
+            RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
+            Source = Current();
+            Loaded += (_, _) => { ThemeManager.Changed += Update; Update(); };
+            Unloaded += (_, _) => ThemeManager.Changed -= Update;
+        }
+        static System.Windows.Media.Imaging.BitmapImage Current() => Logo(ThemeManager.IsDark ? "logo-dark.png" : "logo-light.png", 128);
+        void Update() => Source = Current();
+    }
+
+    /// <summary>Looping animated GIF that starts by itself (see GifPlayer). Fills its parent, cropped to fit.</summary>
+    public static GifPlayer AnimatedGif(string path, double height, int decodeWidth = 220, int maxFrames = 75) =>
+        new(path, decodeWidth, maxFrames) { Height = height, Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
 
     public static Style Style(string key) => (Style)Application.Current.FindResource(key);
 

@@ -77,6 +77,11 @@ public sealed class PostCapturePopup : Window
     static UIElement? Thumbnail(string path, bool isVideo)
     {
         if (isVideo) return null;
+        if (Path.GetExtension(path).Equals(".gif", StringComparison.OrdinalIgnoreCase))
+        {
+            var g = Ui.AnimatedGif(path, 180, 360, 150); g.Width = 320; g.Stretch = Stretch.Uniform;
+            return new Border { CornerRadius = new CornerRadius(8), ClipToBounds = true, Margin = new Thickness(0, 0, 0, 8), Child = g };
+        }
         try
         {
             var bmp = new BitmapImage();

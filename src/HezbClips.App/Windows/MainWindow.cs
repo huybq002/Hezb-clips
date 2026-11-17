@@ -26,12 +26,12 @@ public sealed class MainWindow : Window
     public MainWindow(AppSettings s, string? ffmpeg, string dataDir, IReadOnlyList<HotkeyFailure> failures, MainActions a)
     {
         Title = "Hezb Clips"; Width = 1040; Height = 700; MinWidth = 760; MinHeight = 480;
-        Icon = Ui.Logo("logo.png", 64); Background = Ui.Brush("Bg"); WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Icon = Ui.Logo("logo-light.png", 64); Background = Ui.Brush("Bg"); WindowStartupLocation = WindowStartupLocation.CenterScreen;
         _library = new LibraryView(s.OutputDir, ffmpeg, dataDir, a.Edit);
         _settings = new SettingsView(s, failures, a.Save, a.Redetect, a.Theme);
 
         var header = new DockPanel { Margin = new Thickness(20, 16, 20, 12) };
-        var logo = new Image { Source = Ui.Logo("logo.png", 96), Width = 36, Height = 36, Margin = new Thickness(0, 0, 10, 0) };
+        var logo = new Ui.LogoImage { Width = 36, Height = 36, Margin = new Thickness(0, 0, 10, 0) };
         _title.Text = "Hezb Clips";
         var left = new StackPanel { Orientation = Orientation.Horizontal };
         left.Children.Add(logo); left.Children.Add(_title);

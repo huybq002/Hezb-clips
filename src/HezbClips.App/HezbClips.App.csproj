@@ -10,13 +10,14 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>HezbClips</AssemblyName>
     <RootNamespace>HezbClips.App</RootNamespace>
-    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+    <ApplicationIcon>Assets/app-light.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
-    <Resource Include="Assets/app.ico" />
-    <Resource Include="Assets/logo.png" />
-    <Resource Include="Assets/logo-full.png" />
+    <Resource Include="Assets/app-dark.ico" />
+    <Resource Include="Assets/app-light.ico" />
+    <Resource Include="Assets/logo-dark.png" />
+    <Resource Include="Assets/logo-light.png" />
   </ItemGroup>
 
   <ItemGroup>

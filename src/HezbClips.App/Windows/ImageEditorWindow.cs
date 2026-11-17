@@ -55,12 +55,13 @@ public sealed class ImageEditorWindow : Window
         _pixelated = Pixelate(_bmp);
         Title = "Hezb Clips — Chỉnh sửa · " + System.IO.Path.GetFileName(path);
         Width = 1100; Height = 760; MinWidth = 720; MinHeight = 460;
-        Icon = Ui.Logo("logo.png", 64); Background = Ui.Brush("Bg"); WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Icon = Ui.Logo("logo-light.png", 64); Background = Ui.Brush("Bg"); WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         _canvas.Width = _bmp.PixelWidth; _canvas.Height = _bmp.PixelHeight;
         _canvas.Background = Brushes.Transparent;
         _canvas.Children.Add(new Image { Source = _bmp, Width = _bmp.PixelWidth, Height = _bmp.PixelHeight, IsHitTestVisible = false });
         _canvas.Cursor = Cursors.Cross;
+        RenderOptions.SetBitmapScalingMode(_canvas, BitmapScalingMode.HighQuality);
         _canvas.MouseLeftButtonDown += OnDown; _canvas.MouseMove += OnMove; _canvas.MouseLeftButtonUp += OnUp;
         _view.Child = new Border { Child = _canvas, Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 20, Opacity = 0.5, ShadowDepth = 0 } };
         _view.Margin = new Thickness(16);
@@ -88,7 +89,19 @@ public sealed class ImageEditorWindow : Window
         void ToolBtn(Tool t, string icon, string name, string _)
         {
             var key = _keys[t.ToString()];
-            var b = new ToggleButton { Content = $"{icon} {name}", ToolTip = $"{name} ({key})", Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(10, 5, 10, 5) };
+            var label = new StackPanel { Orientation = Orientation.Horizontal };
+            label.Children.Add(new TextBlock { Text = $"{icon} {name}" });
+            label.Children.Add(new Border
+            {
+                Margin = new Thickness(7, 0, 0, 0), Padding = new Thickness(5, 0, 5, 0), CornerRadius = new CornerRadius(4), VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(Color.FromArgb(70, 128, 128, 128)),
+                Child = new TextBlock { Text = key, FontSize = 10, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas") },
+            });
+            var tip = new StackPanel { Orientation = Orientation.Horizontal };
+            tip.Children.Add(new TextBlock { Text = name + "  " });
+            tip.Children.Add(new TextBlock { Text = key, FontWeight = FontWeights.Bold, FontFamily = new FontFamily("Consolas") });
+            var b = new ToggleButton { Content = label, ToolTip = new ToolTip { Content = tip }, Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(10, 5, 10, 5) };
+            ToolTipService.SetInitialShowDelay(b, 150);
             b.Click += (_, _) => SelectTool(t);
             _toolButtons[t] = b; wrap.Children.Add(b);
         }
@@ -245,7 +258,6 @@ public sealed class ImageEditorWindow : Window
         _start = e.GetPosition(_canvas);
         switch (_tool)
         {
-            case Tool.Text: StartText(_start); e.Handled = true; return;
             case Tool.Number: AddNumber(_start); e.Handled = true; return;
         }
         _canvas.CaptureMouse();
@@ -261,6 +273,9 @@ public sealed class ImageEditorWindow : Window
             case Tool.Arrow: _drawing = new Path { Stroke = ColorBrush(), StrokeThickness = Thickness, StrokeLineJoin = PenLineJoin.Round, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round }; break;
             case Tool.Rect: _drawing = new Rectangle { Stroke = ColorBrush(), StrokeThickness = Thickness, RadiusX = 2, RadiusY = 2 }; break;
             case Tool.Ellipse: _drawing = new Ellipse { Stroke = ColorBrush(), StrokeThickness = Thickness }; break;
+            case Tool.Text:
+                _drawing = new Rectangle { Stroke = Ui.Brush("Accent"), StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 4, 3 }, Fill = new SolidColorBrush(Color.FromArgb(40, 76, 141, 255)) };
+                break;
             case Tool.Mosaic:
                 var r = new Rectangle { Stroke = Brushes.Transparent };
                 RenderOptions.SetBitmapScalingMode(r, BitmapScalingMode.NearestNeighbor);
@@ -301,6 +316,15 @@ public sealed class ImageEditorWindow : Window
         if (_drawing is null) return;
         _canvas.ReleaseMouseCapture();
         var d = _drawing; _drawing = null; _poly = null;
+        if (_tool == Tool.Text && d is Rectangle box)
+        {
+            // drag defines the text box; font size follows its height. A plain click uses a default box.
+            var rect = new Rect(Canvas.GetLeft(box), Canvas.GetTop(box), box.Width, box.Height);
+            _canvas.Children.Remove(d);
+            if (double.IsNaN(rect.Width) || rect.Width < 12 || rect.Height < 12) rect = new Rect(_start.X, _start.Y, 260, 14 + Thickness * 3 + 12);
+            StartText(rect);
+            return;
+        }
         var tiny = d switch
         {
             Polyline pl => false,
@@ -365,15 +389,17 @@ public sealed class ImageEditorWindow : Window
 
     // ---------- text ----------
 
-    void StartText(Point p)
+    void StartText(Rect r)
     {
+        var fontSize = Math.Clamp(r.Height * 0.55, 12, 300);
         _editor = new TextBox
         {
-            MinWidth = 60, AcceptsReturn = true, FontSize = 14 + Thickness * 3, FontWeight = FontWeights.Bold,
+            Width = Math.Max(60, r.Width), MinHeight = r.Height, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+            FontSize = fontSize, FontWeight = FontWeights.Bold,
             Foreground = ColorBrush(), Background = new SolidColorBrush(Color.FromArgb(70, 0, 0, 0)), CaretBrush = Brushes.White,
             BorderBrush = Ui.Brush("Accent"), BorderThickness = new Thickness(1), Padding = new Thickness(2),
         };
-        Canvas.SetLeft(_editor, p.X); Canvas.SetTop(_editor, p.Y);
+        Canvas.SetLeft(_editor, r.X); Canvas.SetTop(_editor, r.Y);
         _canvas.Children.Add(_editor);
         _editor.Loaded += (_, _) => _editor?.Focus();
         _editor.LostKeyboardFocus += (_, _) => { if (_editor is not null) CommitText(); };
@@ -385,7 +411,7 @@ public sealed class ImageEditorWindow : Window
         _editor = null;
         _canvas.Children.Remove(ed);
         if (string.IsNullOrWhiteSpace(ed.Text)) return;
-        var tb = new TextBlock { Text = ed.Text, FontSize = ed.FontSize, FontWeight = FontWeights.Bold, Foreground = ed.Foreground };
+        var tb = new TextBlock { Text = ed.Text, FontSize = ed.FontSize, FontWeight = FontWeights.Bold, Foreground = ed.Foreground, TextWrapping = TextWrapping.Wrap, Width = ed.Width - 6 };
         Canvas.SetLeft(tb, Canvas.GetLeft(ed) + 3); Canvas.SetTop(tb, Canvas.GetTop(ed) + 1);
         _canvas.Children.Add(tb); Commit(tb);
     }

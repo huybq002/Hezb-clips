@@ -81,6 +81,19 @@ public sealed class LibraryView : DockPanel
         var thumbBox = new Grid { Height = 140, Background = Ui.Brush("Surface"), ClipToBounds = true };
         thumbBox.Children.Add(new TextBlock { Text = item.Kind == MediaKind.Video ? "🎞" : "🖼", FontSize = 30, Foreground = Ui.Brush("Disabled"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         thumbBox.Children.Add(img);
+        if (item.Kind == MediaKind.Gif) thumbBox.Children.Add(Ui.AnimatedGif(item.Path, 140));
+        if (item.Kind == MediaKind.Video)
+            thumbBox.Children.Add(new Border
+            {
+                Width = 46, Height = 46, CornerRadius = new CornerRadius(23), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)), BorderBrush = new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)), BorderThickness = new Thickness(2),
+                IsHitTestVisible = false,
+                Child = new System.Windows.Shapes.Polygon
+                {
+                    Points = new PointCollection { new Point(0, 0), new Point(0, 16), new Point(14, 8) }, Fill = Brushes.White,
+                    Margin = new Thickness(4, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                },
+            });
         var badge = item.Kind switch { MediaKind.Video => "VIDEO", MediaKind.Gif => "GIF", _ => "" };
         if (badge.Length > 0)
             thumbBox.Children.Add(new Border
@@ -120,7 +133,7 @@ public sealed class LibraryView : DockPanel
         card.MouseLeave += (_, _) => card.BorderBrush = Ui.Brush("Border");
         card.MouseLeftButtonUp += (_, _) => Open(item.Path);
 
-        _ = LoadThumb(item, img, version);
+        if (item.Kind != MediaKind.Gif) _ = LoadThumb(item, img, version);
         return card;
     }
 
