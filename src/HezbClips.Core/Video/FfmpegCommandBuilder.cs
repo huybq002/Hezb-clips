@@ -40,5 +40,5 @@ public static class FfmpegCommandBuilder
 
     /// <summary>Convert a recorded clip to an optimized GIF (shared palette, lanczos downscale to maxWidth).</summary>
     public static string GifArgs(string inputPath, string outPath, int fps = 15, int maxWidth = 960) =>
-        $"-y -i \"{inputPath}\" -an -vf \"fps={fps},scale='min({maxWidth},iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4\" -loop 0 \"{outPath}\"";
+        $"-y -i \"{inputPath}\" -an -vf \"fps={fps},scale='min({(maxWidth <= 0 ? 100000 : maxWidth)},iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4\" -loop 0 \"{outPath}\"";
 }

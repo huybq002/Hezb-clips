@@ -10,11 +10,10 @@ public sealed class TrayHost : IDisposable
     readonly ToolStripMenuItem _record;
     Action? _balloonClick;
 
-    public TrayHost(Action regionShot, Action fullShot, Action toggleRecord, Action settings, Action exit, Action library)
+    public TrayHost(System.Collections.Generic.IReadOnlyList<(string Text, Action Click)> items, Action toggleRecord, Action settings, Action exit, Action library)
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Chụp vùng", null, (_, _) => regionShot());
-        menu.Items.Add("Chụp toàn màn hình", null, (_, _) => fullShot());
+        foreach (var (text, click) in items) menu.Items.Add(text, null, (_, _) => click());
         _record = new ToolStripMenuItem("Quay màn hình", null, (_, _) => toggleRecord());
         menu.Items.Add(_record);
         menu.Items.Add(new ToolStripSeparator());

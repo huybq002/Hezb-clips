@@ -41,6 +41,11 @@ public class AudioRecorder(IAudioInputFactory factory)
         }
     }
 
+    public void SetPaused(bool paused)
+    {
+        foreach (var (input, _) in _active) input.SetPaused(paused);
+    }
+
     public AudioResult Stop()
     {
         foreach (var (input, file) in _active)

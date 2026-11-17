@@ -15,9 +15,9 @@ namespace HezbClips.App.Windows;
 
 /// <summary>Annotate a captured image: pen, highlighter, line, arrow, rectangle, ellipse, text, numbered badge, mosaic.
 /// Every tool and colour has a keyboard shortcut. Ctrl+S saves "name_edit.png" next to the original, Ctrl+C copies.</summary>
-public sealed class ImageEditorWindow : Window
+public sealed partial class ImageEditorWindow : Window
 {
-    enum Tool { Pen, Highlighter, Line, Arrow, Rect, Ellipse, Text, Number, Mosaic }
+    enum Tool { Pen, Highlighter, Line, Arrow, Rect, Ellipse, Text, Number, Mosaic, Crop }
 
     static readonly (string Name, string Hex)[] Palette =
     {
@@ -26,8 +26,9 @@ public sealed class ImageEditorWindow : Window
     };
 
     readonly string _path;
-    readonly BitmapSource _bmp;
-    readonly BitmapSource _pixelated;
+    BitmapSource _bmp;
+    BitmapSource _pixelated;
+    readonly Image _baseImage = new() { IsHitTestVisible = false };
     readonly Canvas _canvas = new();
     readonly Viewbox _view = new() { Stretch = Stretch.Uniform };
     readonly TextBlock _status = new() { Foreground = Ui.Brush("TextDim"), FontSize = 12, TextWrapping = TextWrapping.Wrap };
@@ -59,7 +60,8 @@ public sealed class ImageEditorWindow : Window
 
         _canvas.Width = _bmp.PixelWidth; _canvas.Height = _bmp.PixelHeight;
         _canvas.Background = Brushes.Transparent;
-        _canvas.Children.Add(new Image { Source = _bmp, Width = _bmp.PixelWidth, Height = _bmp.PixelHeight, IsHitTestVisible = false });
+        _baseImage.Source = _bmp; _baseImage.Width = _bmp.PixelWidth; _baseImage.Height = _bmp.PixelHeight;
+        _canvas.Children.Add(_baseImage);
         _canvas.Cursor = Cursors.Cross;
         RenderOptions.SetBitmapScalingMode(_canvas, BitmapScalingMode.HighQuality);
         _canvas.MouseLeftButtonDown += OnDown; _canvas.MouseMove += OnMove; _canvas.MouseLeftButtonUp += OnUp;
@@ -114,6 +116,7 @@ public sealed class ImageEditorWindow : Window
         ToolBtn(Tool.Text, "T", "Chữ", "T");
         ToolBtn(Tool.Number, "①", "Số", "N");
         ToolBtn(Tool.Mosaic, "▦", "Làm mờ", "M");
+        ToolBtn(Tool.Crop, "✂", "Cắt ảnh", "X");
         Sep();
 
         wrap.Children.Add(_currentColorChip);
@@ -150,6 +153,13 @@ public sealed class ImageEditorWindow : Window
         Act("↶", "Hoàn tác (Ctrl+Z)", Undo);
         Act("↷", "Làm lại (Ctrl+Y)", Redo);
         Act("🗑 Xóa hết", "Xóa mọi chú thích (Ctrl+Shift+Z)", ClearAll);
+        Act("⟲", "Xoay trái (Ctrl+L)", () => Rotate(false));
+        Act("⟳", "Xoay phải (Ctrl+R)", () => Rotate(true));
+        Act("↺ Gốc", "Khôi phục ảnh gốc (bỏ cắt, xoay và chú thích)", RestoreOriginal);
+        Sep();
+        Act("🔤 Copy chữ", "Nhận dạng chữ trong ảnh (OCR) và copy vào clipboard", () => _ = CopyTextAsync());
+        Act("🛡 Che nhạy cảm", "Tự tìm email, số điện thoại, số thẻ trong ảnh và làm mờ", () => _ = RedactAsync());
+        Act("📌 Ghim", "Ghim ảnh này lên màn hình", () => new PinWindow(Render()).Show());
         Sep();
         Act("📋 Copy", "Copy ảnh (Ctrl+C)", CopyToClipboard);
         Act("💾 Lưu", "Lưu thành file mới (Ctrl+S)", () => Save(), primary: true);
@@ -174,7 +184,7 @@ public sealed class ImageEditorWindow : Window
     static string ToolName(Tool t) => t switch
     {
         Tool.Pen => "Bút", Tool.Highlighter => "Tô sáng", Tool.Line => "Đường thẳng", Tool.Arrow => "Mũi tên", Tool.Rect => "Chữ nhật",
-        Tool.Ellipse => "Elip", Tool.Text => "Chữ", Tool.Number => "Số", _ => "Làm mờ",
+        Tool.Ellipse => "Elip", Tool.Text => "Chữ", Tool.Number => "Số", Tool.Mosaic => "Làm mờ", _ => "Cắt ảnh",
     };
 
     void SelectTool(Tool t)
@@ -223,6 +233,8 @@ public sealed class ImageEditorWindow : Window
                 case Key.Y: Redo(); e.Handled = true; break;
                 case Key.S: Save(); e.Handled = true; break;
                 case Key.C: CopyToClipboard(); e.Handled = true; break;
+                case Key.L: Rotate(false); e.Handled = true; break;
+                case Key.R: Rotate(true); e.Handled = true; break;
             }
             return;
         }
@@ -276,6 +288,9 @@ public sealed class ImageEditorWindow : Window
             case Tool.Text:
                 _drawing = new Rectangle { Stroke = Ui.Brush("Accent"), StrokeThickness = 1.5, StrokeDashArray = new DoubleCollection { 4, 3 }, Fill = new SolidColorBrush(Color.FromArgb(40, 76, 141, 255)) };
                 break;
+            case Tool.Crop:
+                _drawing = new Rectangle { Stroke = Brushes.White, StrokeThickness = 2, StrokeDashArray = new DoubleCollection { 5, 3 }, Fill = new SolidColorBrush(Color.FromArgb(45, 255, 255, 255)) };
+                break;
             case Tool.Mosaic:
                 var r = new Rectangle { Stroke = Brushes.Transparent };
                 RenderOptions.SetBitmapScalingMode(r, BitmapScalingMode.NearestNeighbor);
@@ -323,6 +338,13 @@ public sealed class ImageEditorWindow : Window
             _canvas.Children.Remove(d);
             if (double.IsNaN(rect.Width) || rect.Width < 12 || rect.Height < 12) rect = new Rect(_start.X, _start.Y, 260, 14 + Thickness * 3 + 12);
             StartText(rect);
+            return;
+        }
+        if (_tool == Tool.Crop && d is Rectangle cropBox)
+        {
+            var rect = new Rect(Canvas.GetLeft(cropBox), Canvas.GetTop(cropBox), cropBox.Width, cropBox.Height);
+            _canvas.Children.Remove(d);
+            ApplyCrop(rect);
             return;
         }
         var tiny = d switch
@@ -420,6 +442,47 @@ public sealed class ImageEditorWindow : Window
     {
         var ed = _editor; if (ed is null) return;
         _editor = null; _canvas.Children.Remove(ed);
+    }
+
+    // ---------- crop / rotate ----------
+
+    /// <summary>Swap the picture under the annotations (crop, rotate, restore). Annotations are flattened first by the callers.</summary>
+    void ReplaceBase(BitmapSource bmp)
+    {
+        CancelText();
+        foreach (var el in _items) _canvas.Children.Remove(el);
+        _items.Clear(); _redo.Clear();
+        _bmp = bmp; _pixelated = Pixelate(bmp);
+        _canvas.Width = bmp.PixelWidth; _canvas.Height = bmp.PixelHeight;
+        _baseImage.Source = bmp; _baseImage.Width = bmp.PixelWidth; _baseImage.Height = bmp.PixelHeight;
+        _dirty = true;
+    }
+
+    void ApplyCrop(Rect r)
+    {
+        var x = (int)Math.Clamp(Math.Round(r.X), 0, _bmp.PixelWidth - 1);
+        var y = (int)Math.Clamp(Math.Round(r.Y), 0, _bmp.PixelHeight - 1);
+        var w = (int)Math.Min(Math.Round(r.Width), _bmp.PixelWidth - x);
+        var h = (int)Math.Min(Math.Round(r.Height), _bmp.PixelHeight - y);
+        if (w < 8 || h < 8) return;
+        var flat = Render(); // annotations inside the crop are kept
+        var cropped = new CroppedBitmap(flat, new Int32Rect(x, y, w, h)); cropped.Freeze();
+        ReplaceBase(cropped);
+        _status.Text = $"✓ Đã cắt còn {w} × {h}. Bấm \"↺ Gốc\" để khôi phục ảnh ban đầu.";
+    }
+
+    void Rotate(bool right)
+    {
+        var flat = Render();
+        var rotated = new TransformedBitmap(flat, new RotateTransform(right ? 90 : -90)); rotated.Freeze();
+        ReplaceBase(rotated);
+        _status.Text = right ? "✓ Đã xoay phải 90°" : "✓ Đã xoay trái 90°";
+    }
+
+    void RestoreOriginal()
+    {
+        try { ReplaceBase(LoadBitmap(_path)); _dirty = false; _status.Text = "✓ Đã khôi phục ảnh gốc"; }
+        catch (Exception ex) { _status.Text = "Không đọc lại được ảnh gốc: " + ex.Message; }
     }
 
     // ---------- history ----------

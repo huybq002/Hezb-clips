@@ -20,7 +20,7 @@ public sealed class LibraryView : DockPanel
 {
     readonly string _thumbCache;
     readonly string? _ffmpeg;
-    readonly Action<string>? _edit;
+    readonly Action<string>? _edit, _pin;
     readonly WrapPanel _grid = new() { Margin = new Thickness(-6, 4, 0, 12) };
     readonly TextBlock _summary = new() { Foreground = Ui.Brush("TextDim"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock _empty = new() { Text = "Chưa có gì ở đây.\nChụp hoặc quay để bắt đầu.", Foreground = Ui.Brush("TextDim"), FontSize = 14, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 80, 0, 0), Visibility = Visibility.Collapsed };
@@ -34,9 +34,9 @@ public sealed class LibraryView : DockPanel
     /// <summary>Point the gallery at another folder (after Settings changed it).</summary>
     public void SetFolder(string dir) { _dirValue = dir; _grid.Tag = null; Reload(); }
 
-    public LibraryView(string outputDir, string? ffmpeg, string dataDir, Action<string>? edit)
+    public LibraryView(string outputDir, string? ffmpeg, string dataDir, Action<string>? edit, Action<string>? pin = null)
     {
-        _dirValue = outputDir; _ffmpeg = ffmpeg; _thumbCache = Path.Combine(dataDir, "thumbs"); _edit = edit;
+        _dirValue = outputDir; _ffmpeg = ffmpeg; _thumbCache = Path.Combine(dataDir, "thumbs"); _edit = edit; _pin = pin;
 
         var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
         var right = new StackPanel { Orientation = Orientation.Horizontal };
@@ -116,6 +116,7 @@ public sealed class LibraryView : DockPanel
         A("📂", "Hiện trong thư mục", () => Process.Start("explorer.exe", $"/select,\"{item.Path}\""));
         A("📋", "Copy", () => CopyItem(item));
         if (item.Kind == MediaKind.Image && _edit is not null) A("✏", "Chỉnh sửa", () => _edit(item.Path));
+        if (item.Kind != MediaKind.Video && _pin is not null) A("📌", "Ghim lên màn hình", () => _pin(item.Path));
         A("🗑", "Xóa (vào thùng rác)", () => Delete(item));
 
         var col = new StackPanel();
@@ -131,7 +132,18 @@ public sealed class LibraryView : DockPanel
         };
         card.MouseEnter += (_, _) => card.BorderBrush = Ui.Brush("Accent");
         card.MouseLeave += (_, _) => card.BorderBrush = Ui.Brush("Border");
-        card.MouseLeftButtonUp += (_, _) => Open(item.Path);
+        // click opens; dragging the card out of the window copies the file into another app (Zalo, Chrome, Explorer…)
+        Point? downAt = null; var dragged = false;
+        card.MouseLeftButtonDown += (_, e) => { downAt = e.GetPosition(card); dragged = false; };
+        card.MouseMove += (_, e) =>
+        {
+            if (downAt is not { } d || e.LeftButton != MouseButtonState.Pressed || dragged) return;
+            var p = e.GetPosition(card);
+            if (Math.Abs(p.X - d.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(p.Y - d.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            dragged = true;
+            DragDrop.DoDragDrop(card, new DataObject(DataFormats.FileDrop, new[] { item.Path }), DragDropEffects.Copy);
+        };
+        card.MouseLeftButtonUp += (_, _) => { if (!dragged) Open(item.Path); downAt = null; };
 
         if (item.Kind != MediaKind.Gif) _ = LoadThumb(item, img, version);
         return card;

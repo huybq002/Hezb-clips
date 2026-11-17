@@ -27,6 +27,16 @@ public static class WindowFinder
     const int DWMWA_CLOAKED = 13, DWMWA_EXTENDED_FRAME_BOUNDS = 9;
     const uint CWP_SKIPINVISIBLE = 0x1, CWP_SKIPTRANSPARENT = 0x4;
 
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+
+    /// <summary>Bounds of the window the user is working in (skips our own windows, desktop, taskbar).</summary>
+    public static Rectangle? Foreground(ICollection<IntPtr> ignore)
+    {
+        var h = GetForegroundWindow();
+        if (h == IntPtr.Zero || ignore.Contains(h) || IsIconic(h) || IsDesktop(h)) return null;
+        return TryBounds(h, out var r) && r.Width >= 4 && r.Height >= 4 ? r : null;
+    }
+
     public static Rectangle? FromPoint(Point physical, ICollection<IntPtr> ignore)
     {
         IntPtr hit = IntPtr.Zero;

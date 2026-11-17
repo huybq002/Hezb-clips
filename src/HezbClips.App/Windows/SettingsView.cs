@@ -17,24 +17,48 @@ public sealed class SettingsView : Grid
     readonly Action<AppSettings> _onSave;
     readonly Action _onRedetect;
     readonly Action<AppTheme> _onTheme;
-    readonly ComboBox _theme = new(), _imgQuality = new(), _imgFormat = new(), _vidQuality = new(), _mode = new(), _fps = new();
+    readonly ComboBox _theme = new(), _imgQuality = new(), _imgFormat = new(), _vidQuality = new(), _mode = new(), _fps = new(),
+        _delay = new(), _gifFps = new(), _gifWidth = new(), _retention = new();
     readonly CheckBox _sys = new() { Content = "Thu âm thanh hệ thống" }, _mic = new() { Content = "Thu microphone" },
         _startup = new() { Content = "Khởi động cùng Windows (chạy ẩn ở khay hệ thống)" },
-        _editAfter = new() { Content = "Tự mở trình chỉnh sửa ngay sau khi chụp ảnh" };
-    readonly TextBox _dir = new(), _hkRegion = new(), _hkFull = new(), _hkRecord = new(), _hkGif = new(), _hkLibrary = new();
+        _editAfter = new() { Content = "Tự mở trình chỉnh sửa ngay sau khi chụp ảnh" },
+        _autoCopy = new() { Content = "Tự copy ảnh vào clipboard sau mỗi lần chụp" },
+        _clicks = new() { Content = "Hiện vòng tròn khi bấm chuột" }, _keys = new() { Content = "Hiện phím bấm" }, _cam = new() { Content = "Hiện webcam ở góc vùng quay" };
+    readonly TextBox _dir = new(), _feed = new();
     readonly Dictionary<string, TextBox> _editorKeys = new();
+    readonly Dictionary<string, TextBox> _hotkeys = new();
     readonly TextBlock _error = new() { Foreground = Ui.Brush("Danger"), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
     readonly ContentControl _page = new();
     readonly List<(string Name, ToggleButton Btn, Func<UIElement> Build)> _sections = new();
     readonly Dictionary<string, UIElement> _built = new();
+    Action? _extraApply;
+    readonly Func<Panel, UIElement>? _extraPage;
 
     static readonly Dictionary<string, string> ToolLabels = new()
     {
         ["Pen"] = "Bút", ["Highlighter"] = "Tô sáng", ["Line"] = "Đường thẳng", ["Arrow"] = "Mũi tên", ["Rect"] = "Chữ nhật",
-        ["Ellipse"] = "Elip", ["Text"] = "Chữ", ["Number"] = "Số", ["Mosaic"] = "Làm mờ",
+        ["Ellipse"] = "Elip", ["Text"] = "Chữ", ["Number"] = "Số", ["Mosaic"] = "Làm mờ", ["Crop"] = "Cắt ảnh",
     };
 
-    public SettingsView(AppSettings s, IReadOnlyList<HotkeyFailure> hotkeyFailures, Action<AppSettings> onSave, Action onRedetect, Action<AppTheme> onTheme)
+    /// <summary>All global hotkeys: id (matches the HotkeyService names), label, getter, setter.</summary>
+    static readonly (string Name, string Label, Func<AppSettings, string> Get, Action<AppSettings, string> Set)[] Hk =
+    {
+        ("RegionShot", "Chụp vùng / tự nhận khung", s => s.HotkeyRegionShot, (s, v) => s.HotkeyRegionShot = v),
+        ("FullShot", "Chụp toàn màn hình", s => s.HotkeyFullShot, (s, v) => s.HotkeyFullShot = v),
+        ("WindowShot", "Chụp cửa sổ đang focus", s => s.HotkeyWindowShot, (s, v) => s.HotkeyWindowShot = v),
+        ("DelayShot", "Chụp trễ (đếm ngược)", s => s.HotkeyDelayShot, (s, v) => s.HotkeyDelayShot = v),
+        ("CopyRegion", "Chụp vùng và copy vào clipboard", s => s.HotkeyCopyRegion, (s, v) => s.HotkeyCopyRegion = v),
+        ("PinShot", "Chụp vùng và ghim lên màn hình", s => s.HotkeyPinShot, (s, v) => s.HotkeyPinShot = v),
+        ("Scroll", "Chụp cuộn trang", s => s.HotkeyScroll, (s, v) => s.HotkeyScroll = v),
+        ("Record", "Quay video (bắt đầu / dừng)", s => s.HotkeyRecord, (s, v) => s.HotkeyRecord = v),
+        ("Gif", "Quay GIF (tối đa 60 giây)", s => s.HotkeyGif, (s, v) => s.HotkeyGif = v),
+        ("Pause", "Tạm dừng / tiếp tục khi đang quay", s => s.HotkeyPause, (s, v) => s.HotkeyPause = v),
+        ("Library", "Mở ứng dụng / thư viện", s => s.HotkeyLibrary, (s, v) => s.HotkeyLibrary = v),
+    };
+
+    /// <param name="extraPage">Optional extra "Nâng cao" page (updates, AI upscaler) built by the host.</param>
+    public SettingsView(AppSettings s, IReadOnlyList<HotkeyFailure> hotkeyFailures, Action<AppSettings> onSave, Action onRedetect, Action<AppTheme> onTheme,
+        Func<AppSettings, UIElement>? extraPage = null)
     {
         _s = s; _onSave = onSave; _onRedetect = onRedetect; _onTheme = onTheme;
 
@@ -44,19 +68,27 @@ public sealed class SettingsView : Grid
         _imgQuality.ItemsSource = qualities; _vidQuality.ItemsSource = qualities;
         _imgQuality.SelectedIndex = QIndex(s.Quality); _vidQuality.SelectedIndex = QIndex(s.VideoQuality);
         _imgFormat.ItemsSource = new[] { "PNG (không nén mất dữ liệu)", "WebP", "JPEG" }; _imgFormat.SelectedIndex = (int)s.ImageFormat;
+        _delay.ItemsSource = new[] { "3 giây", "5 giây", "10 giây" }; _delay.SelectedIndex = s.DelaySeconds >= 10 ? 2 : s.DelaySeconds >= 5 ? 1 : 0;
         _mode.ItemsSource = new[] { "Tự động (theo cấu hình máy)", "Live (upscale khi quay)", "Nền (upscale sau khi quay)" }; _mode.SelectedIndex = (int)s.VideoMode;
         _fps.ItemsSource = new[] { "30", "60" }; _fps.SelectedIndex = s.Fps >= 60 ? 1 : 0;
-        _sys.IsChecked = s.CaptureSystemAudio; _mic.IsChecked = s.CaptureMicrophone; _startup.IsChecked = s.StartWithWindows; _editAfter.IsChecked = s.OpenEditorAfterCapture;
-        _dir.Text = s.OutputDir;
+        _gifFps.ItemsSource = new[] { "10 fps", "15 fps", "20 fps", "30 fps" }; _gifFps.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { 10, 15, 20, 30 }, s.GifFps));
+        _gifWidth.ItemsSource = new[] { "480 px", "720 px", "960 px", "Giữ nguyên kích thước" }; _gifWidth.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { 480, 720, 960, 0 }, s.GifWidth));
+        _retention.ItemsSource = new[] { "Không tự xóa", "Sau 7 ngày", "Sau 30 ngày", "Sau 90 ngày" };
+        _retention.SelectedIndex = s.LibraryRetentionDays switch { >= 90 => 3, >= 30 => 2, >= 7 => 1, _ => 0 };
+        _sys.IsChecked = s.CaptureSystemAudio; _mic.IsChecked = s.CaptureMicrophone; _startup.IsChecked = s.StartWithWindows;
+        _editAfter.IsChecked = s.OpenEditorAfterCapture; _autoCopy.IsChecked = s.AutoCopyAfterCapture;
+        _clicks.IsChecked = s.ShowClicks; _keys.IsChecked = s.ShowKeys; _cam.IsChecked = s.Webcam;
+        _dir.Text = s.OutputDir; _feed.Text = s.UpdateFeedUrl;
         foreach (var tool in EditorShortcuts.Tools)
             _editorKeys[tool] = new TextBox { Width = 38, MaxLength = 1, TextAlignment = TextAlignment.Center, FontWeight = FontWeights.Bold };
+        foreach (var h in Hk) _hotkeys[h.Name] = new TextBox();
         LoadHotkeys(s);
         foreach (var f in hotkeyFailures)
-        {
-            var box = f.Name switch { "RegionShot" => _hkRegion, "FullShot" => _hkFull, "Gif" => _hkGif, "Library" => _hkLibrary, _ => _hkRecord };
-            box.BorderBrush = Ui.Brush("Danger"); box.ToolTip = "Phím tắt này đang bị chương trình khác chiếm. Hãy chọn tổ hợp khác.";
-            _error.Text += $"Phím tắt {f.Combo} bị chiếm. ";
-        }
+            if (_hotkeys.TryGetValue(f.Name, out var box))
+            {
+                box.BorderBrush = Ui.Brush("Danger"); box.ToolTip = "Phím tắt này đang bị chương trình khác chiếm. Hãy chọn tổ hợp khác.";
+                _error.Text += $"Phím tắt {f.Combo} bị chiếm. ";
+            }
 
         ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
         ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -73,6 +105,7 @@ public sealed class SettingsView : Grid
         Section("🎞", "Video & âm thanh", BuildVideo);
         Section("⌨", "Phím tắt", BuildShortcuts);
         Section("💾", "Lưu trữ", BuildStorage);
+        if (extraPage is not null) Section("🛠", "Nâng cao", () => extraPage(_s));
         SetColumn(nav, 0); Children.Add(nav);
 
         var right = new DockPanel();
@@ -116,32 +149,39 @@ public sealed class SettingsView : Grid
         if (note is not null) p.Children.Add(new TextBlock { Text = note, Foreground = Ui.Brush("Disabled"), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0) });
     }
 
+    static void Check(Panel p, CheckBox c, double top = 8) { c.Margin = new Thickness(0, top, 0, 0); p.Children.Add(c); }
+
     UIElement BuildAppearance()
     {
         var p = Page("Giao diện", "Chủ đề màu và hành vi chung của ứng dụng.");
         Field(p, "Chế độ màu", _theme, "Đổi có hiệu lực ngay lập tức.");
-        _editAfter.Margin = new Thickness(0, 18, 0, 0); p.Children.Add(_editAfter);
-        _startup.Margin = new Thickness(0, 10, 0, 0); p.Children.Add(_startup);
+        Check(p, _editAfter, 18);
+        Check(p, _startup, 10);
         return p;
     }
 
     UIElement BuildImage()
     {
-        var p = Page("Ảnh chụp", "Chất lượng và định dạng ảnh khi chụp màn hình.");
-        Field(p, "Chất lượng ảnh xuất", _imgQuality, "Mặc định 2K. Upscale làm ảnh nét và mượt hơn, không thêm chi tiết gốc.");
+        var p = Page("Ảnh chụp", "Chất lượng, định dạng và hành vi sau khi chụp ảnh.");
+        Field(p, "Chất lượng ảnh xuất", _imgQuality, "Phóng to ảnh nhỏ hơn sẽ làm mềm ảnh. Chọn 1080p nếu muốn giữ ảnh gần với màn hình gốc.");
         Field(p, "Định dạng ảnh", _imgFormat);
+        Field(p, "Thời gian đếm ngược của \"Chụp trễ\"", _delay);
+        Check(p, _autoCopy, 18);
         return p;
     }
 
     UIElement BuildVideo()
     {
         var p = Page("Video & âm thanh", "Cách quay màn hình.");
-        Field(p, "Chất lượng video xuất", _vidQuality, "Mặc định 1080p. Máy yếu quay ở độ phân giải gốc rồi upscale ở nền.");
+        Field(p, "Chất lượng video xuất", _vidQuality, "Máy yếu quay ở độ phân giải gốc rồi upscale ở nền.");
         Field(p, "Chế độ quay video", _mode);
         Field(p, "FPS", _fps);
-        _sys.Margin = new Thickness(0, 18, 0, 2); p.Children.Add(_sys);
-        _mic.Margin = new Thickness(0, 6, 0, 0); p.Children.Add(_mic);
-        p.Children.Add(new TextBlock { Text = "GIF luôn quay 15 fps, tối đa 60 giây, không có âm thanh.", Foreground = Ui.Brush("Disabled"), FontSize = 12, Margin = new Thickness(0, 14, 0, 0), TextWrapping = TextWrapping.Wrap });
+        Check(p, _sys, 18); Check(p, _mic, 6);
+        p.Children.Add(new TextBlock { Text = "Hiệu ứng mặc định khi quay", FontSize = 15, FontWeight = FontWeights.Bold, Foreground = Ui.Brush("Text"), Margin = new Thickness(0, 24, 0, 0) });
+        Check(p, _clicks, 8); Check(p, _keys, 6); Check(p, _cam, 6);
+        p.Children.Add(new TextBlock { Text = "Ảnh GIF (tối đa 60 giây, không có âm thanh)", FontSize = 15, FontWeight = FontWeights.Bold, Foreground = Ui.Brush("Text"), Margin = new Thickness(0, 24, 0, 0) });
+        Field(p, "Số khung hình/giây", _gifFps, "Ít fps và chiều rộng nhỏ giúp file GIF nhẹ hơn.");
+        Field(p, "Chiều rộng tối đa", _gifWidth);
         return p;
     }
 
@@ -157,6 +197,7 @@ public sealed class SettingsView : Grid
         };
         DockPanel.SetDock(browse, Dock.Right); row.Children.Add(browse); row.Children.Add(_dir);
         Field(p, "Thư mục lưu", row);
+        Field(p, "Tự dọn file cũ", _retention, "File cũ hơn mốc này sẽ được chuyển vào thùng rác khi mở ứng dụng. File gắn sao không bao giờ bị xóa.");
         var redetect = new Button { Content = "Dò lại cấu hình máy", Margin = new Thickness(0, 22, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(14, 7, 14, 7) };
         redetect.Click += (_, _) => { _onRedetect(); _error.Foreground = Ui.Brush("Accent"); _error.Text = "Đang dò lại cấu hình ở nền…"; };
         p.Children.Add(redetect);
@@ -167,11 +208,7 @@ public sealed class SettingsView : Grid
     UIElement BuildShortcuts()
     {
         var p = Page("Phím tắt", "Phím tắt toàn cục hoạt động ở mọi nơi. Định dạng: Ctrl+Shift+S, Alt+F1, ...");
-        Field(p, "Chụp vùng / tự nhận khung", _hkRegion);
-        Field(p, "Chụp toàn màn hình", _hkFull);
-        Field(p, "Quay video (bắt đầu / dừng)", _hkRecord);
-        Field(p, "Quay GIF (tối đa 60 giây)", _hkGif);
-        Field(p, "Mở ứng dụng / thư viện", _hkLibrary);
+        foreach (var h in Hk) Field(p, h.Label, _hotkeys[h.Name]);
 
         p.Children.Add(new TextBlock { Text = "Công cụ trình chỉnh sửa ảnh", FontSize = 15, FontWeight = FontWeights.Bold, Foreground = Ui.Brush("Text"), Margin = new Thickness(0, 24, 0, 0) });
         p.Children.Add(new TextBlock { Text = "Mỗi công cụ một chữ cái A-Z (không dùng C, đã dành cho màu tùy chọn).", Foreground = Ui.Brush("Disabled"), FontSize = 12, Margin = new Thickness(0, 3, 0, 8) });
@@ -193,8 +230,7 @@ public sealed class SettingsView : Grid
 
     void LoadHotkeys(AppSettings s)
     {
-        _hkRegion.Text = s.HotkeyRegionShot; _hkFull.Text = s.HotkeyFullShot; _hkRecord.Text = s.HotkeyRecord;
-        _hkGif.Text = s.HotkeyGif; _hkLibrary.Text = s.HotkeyLibrary;
+        foreach (var h in Hk) _hotkeys[h.Name].Text = h.Get(s);
         var keys = EditorShortcuts.Resolve(s.EditorKeys);
         foreach (var (tool, box) in _editorKeys) box.Text = keys[tool];
     }
@@ -224,24 +260,20 @@ public sealed class SettingsView : Grid
         }
         var keys = EditorShortcuts.Resolve(_s.EditorKeys);
         string K(string t) => keys[t];
-        Group("Toàn cục",
-            (_s.HotkeyRegionShot, "Chụp vùng: hover tự nhận khung, click chọn, kéo để tự vẽ vùng"),
-            (_s.HotkeyFullShot, "Chụp toàn màn hình"),
-            (_s.HotkeyRecord, "Chọn vùng rồi quay video; bấm lại để hủy thanh quay hoặc dừng"),
-            (_s.HotkeyGif, "Chọn vùng rồi quay GIF, tự dừng sau 60 giây"),
-            (_s.HotkeyLibrary, "Mở ứng dụng và thư viện"),
-            ("Esc", "Hủy khi đang chọn vùng"));
+        Group("Toàn cục", Hk.Select(h => (h.Get(_s), h.Label)).Append(("Esc", "Hủy khi đang chọn vùng")).ToArray());
         Group("Trình chỉnh sửa ảnh",
             ($"{K("Pen")} {K("Highlighter")} {K("Line")} {K("Arrow")}", "Bút · tô sáng · đường thẳng · mũi tên"),
-            ($"{K("Rect")} {K("Ellipse")} {K("Text")} {K("Number")} {K("Mosaic")}", "Chữ nhật · elip · chữ · đánh số · làm mờ"),
+            ($"{K("Rect")} {K("Ellipse")} {K("Text")} {K("Number")} {K("Mosaic")} {K("Crop")}", "Chữ nhật · elip · chữ · đánh số · làm mờ · cắt ảnh"),
             ("1 - 9 / C", "Chọn màu có sẵn / màu tùy chọn"),
             ("[   ]", "Giảm / tăng độ dày nét"),
             ("Shift (khi vẽ)", "Giữ tỉ lệ: hình vuông, hình tròn, góc 45°"),
             ("Ctrl+Z / Ctrl+Y", "Hoàn tác / làm lại (Delete cũng hoàn tác)"),
             ("Ctrl+Shift+Z", "Xóa hết chú thích"),
+            ("Ctrl+L / Ctrl+R", "Xoay ảnh trái / phải"),
             ("Ctrl+S / Ctrl+C", "Lưu file *_edit.png / copy ảnh"),
             ("Esc", "Đóng trình chỉnh sửa"));
-        Group("Thư viện", ("F5", "Làm mới"), ("Click thẻ", "Mở file"));
+        Group("Ghim ảnh", ("Kéo / lăn chuột", "Di chuyển / phóng thu"), ("Alt + lăn chuột", "Đổi độ mờ"), ("Nhấp đúp / Esc", "Đóng"));
+        Group("Thư viện", ("F5", "Làm mới"), ("Click thẻ", "Mở file"), ("Kéo thẻ", "Kéo file sang ứng dụng khác"));
         return new Border
         {
             Margin = new Thickness(0, 22, 0, 8), Padding = new Thickness(14), CornerRadius = new CornerRadius(12),
@@ -256,12 +288,12 @@ public sealed class SettingsView : Grid
 
     bool Apply()
     {
-        foreach (var (box, name) in new[] { (_hkRegion, "chụp vùng"), (_hkFull, "chụp toàn màn hình"), (_hkRecord, "quay"), (_hkGif, "quay GIF"), (_hkLibrary, "thư viện") })
+        foreach (var h in Hk)
         {
-            try { HotkeyParser.Parse(box.Text); }
-            catch (FormatException) { _error.Text = $"Phím tắt '{name}' không hợp lệ (ví dụ: Ctrl+Shift+S)."; ShowSection("Phím tắt"); return false; }
+            try { HotkeyParser.Parse(_hotkeys[h.Name].Text); }
+            catch (FormatException) { _error.Text = $"Phím tắt '{h.Label}' không hợp lệ (ví dụ: Ctrl+Shift+S)."; ShowSection("Phím tắt"); return false; }
         }
-        var combos = new[] { _hkRegion, _hkFull, _hkRecord, _hkGif, _hkLibrary }.Select(b => b.Text.Trim().ToUpperInvariant().Replace(" ", "")).ToList();
+        var combos = Hk.Select(h => _hotkeys[h.Name].Text.Trim().ToUpperInvariant().Replace(" ", "")).ToList();
         if (combos.Distinct().Count() != combos.Count) { _error.Text = "Hai phím tắt toàn cục đang trùng nhau."; ShowSection("Phím tắt"); return false; }
         var editorKeys = _editorKeys.ToDictionary(kv => kv.Key, kv => kv.Value.Text.Trim().ToUpperInvariant());
         if (EditorShortcuts.Validate(editorKeys) is { } err) { _error.Text = err; ShowSection("Phím tắt"); return false; }
@@ -271,13 +303,18 @@ public sealed class SettingsView : Grid
         _s.ImageFormat = (ImageFormat)_imgFormat.SelectedIndex;
         _s.VideoMode = (VideoMode)_mode.SelectedIndex;
         _s.Fps = _fps.SelectedIndex == 1 ? 60 : 30;
+        _s.DelaySeconds = _delay.SelectedIndex switch { 2 => 10, 1 => 5, _ => 3 };
+        _s.GifFps = new[] { 10, 15, 20, 30 }[Math.Max(0, _gifFps.SelectedIndex)];
+        _s.GifWidth = new[] { 480, 720, 960, 0 }[Math.Max(0, _gifWidth.SelectedIndex)];
+        _s.LibraryRetentionDays = _retention.SelectedIndex switch { 3 => 90, 2 => 30, 1 => 7, _ => 0 };
         _s.CaptureSystemAudio = _sys.IsChecked == true; _s.CaptureMicrophone = _mic.IsChecked == true;
-        _s.StartWithWindows = _startup.IsChecked == true; _s.OpenEditorAfterCapture = _editAfter.IsChecked == true;
+        _s.ShowClicks = _clicks.IsChecked == true; _s.ShowKeys = _keys.IsChecked == true; _s.Webcam = _cam.IsChecked == true;
+        _s.StartWithWindows = _startup.IsChecked == true; _s.OpenEditorAfterCapture = _editAfter.IsChecked == true; _s.AutoCopyAfterCapture = _autoCopy.IsChecked == true;
         _s.Theme = (AppTheme)Math.Max(0, _theme.SelectedIndex);
         _s.OutputDir = string.IsNullOrWhiteSpace(_dir.Text) ? _s.OutputDir : _dir.Text.Trim();
-        _s.HotkeyRegionShot = _hkRegion.Text.Trim(); _s.HotkeyFullShot = _hkFull.Text.Trim(); _s.HotkeyRecord = _hkRecord.Text.Trim();
-        _s.HotkeyGif = _hkGif.Text.Trim(); _s.HotkeyLibrary = _hkLibrary.Text.Trim();
+        foreach (var h in Hk) h.Set(_s, _hotkeys[h.Name].Text.Trim());
         _s.EditorKeys = editorKeys;
+        _extraApply?.Invoke();
         return true;
     }
 }

@@ -9,8 +9,8 @@ using HezbClips.Core.Settings;
 
 namespace HezbClips.App.Windows;
 
-public sealed record MainActions(Action Region, Action Full, Action Record, Action Gif, Action<string> Edit,
-    Action<AppSettings> Save, Action Redetect, Action<AppTheme> Theme);
+public sealed record MainActions(Action Region, Action Full, Action Window, Action Delay, Action CopyRegion, Action Pin, Action Scroll,
+    Action Record, Action Gif, Action<string> Edit, Action<string> PinFile, Action<AppSettings> Save, Action Redetect, Action<AppTheme> Theme);
 
 /// <summary>Main app window: quick capture buttons on top, the media library below, and a gear button
 /// that swaps the library for the settings sections.</summary>
@@ -27,7 +27,7 @@ public sealed class MainWindow : Window
     {
         Title = "Hezb Clips"; Width = 1040; Height = 700; MinWidth = 760; MinHeight = 480;
         Icon = Ui.Logo("logo-light.png", 64); Background = Ui.Brush("Bg"); WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        _library = new LibraryView(s.OutputDir, ffmpeg, dataDir, a.Edit);
+        _library = new LibraryView(s.OutputDir, ffmpeg, dataDir, a.Edit, a.PinFile);
         _settings = new SettingsView(s, failures, a.Save, a.Redetect, a.Theme);
 
         var header = new DockPanel { Margin = new Thickness(20, 16, 20, 12) };
@@ -48,8 +48,18 @@ public sealed class MainWindow : Window
         DockPanel.SetDock(actions, Dock.Right); header.Children.Add(actions);
         header.Children.Add(new Border()); // fills the gap
 
+        // second row: the other capture functions, each with its own hotkey
+        var tools = new WrapPanel { Margin = new Thickness(20, 0, 20, 10) };
+        tools.Children.Add(new TextBlock { Text = "Công cụ nhanh", Foreground = Ui.Brush("TextDim"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 4) });
+        tools.Children.Add(Chip("🗔", "Cửa sổ", "Chụp cửa sổ đang focus", s.HotkeyWindowShot, a.Window));
+        tools.Children.Add(Chip("⏱", "Chụp trễ", $"Đếm ngược {s.DelaySeconds} giây rồi chụp toàn màn hình", s.HotkeyDelayShot, a.Delay));
+        tools.Children.Add(Chip("📋", "Chụp & copy", "Chụp vùng và copy vào clipboard", s.HotkeyCopyRegion, a.CopyRegion));
+        tools.Children.Add(Chip("📌", "Chụp & ghim", "Chụp vùng và ghim lên màn hình", s.HotkeyPinShot, a.Pin));
+        tools.Children.Add(Chip("↧", "Cuộn trang", "Chụp trang dài bằng cách tự cuộn", s.HotkeyScroll, a.Scroll));
+
         var root = new DockPanel();
         DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
+        DockPanel.SetDock(tools, Dock.Top); root.Children.Add(tools);
         _body.Margin = new Thickness(20, 0, 20, 16);
         root.Children.Add(_body);
         Content = root;
@@ -61,6 +71,13 @@ public sealed class MainWindow : Window
         };
         Activated += (_, _) => { if (!_inSettings) _library.Reload(); };
         ShowLibrary();
+    }
+
+    static Button Chip(string icon, string text, string tip, string hotkey, Action click)
+    {
+        var b = new Button { Content = $"{icon} {text}", Margin = new Thickness(0, 0, 6, 4), Padding = new Thickness(11, 4, 11, 4), FontSize = 12, ToolTip = $"{tip} ({hotkey})" };
+        b.Click += (_, _) => click();
+        return b;
     }
 
     static Button Action(string icon, string text, string hotkey, Action click, bool primary = false)

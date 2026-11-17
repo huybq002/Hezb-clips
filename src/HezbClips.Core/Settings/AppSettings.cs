@@ -24,5 +24,20 @@ public class AppSettings
     public string HotkeyGif { get; set; } = "Ctrl+Shift+G";
     public string HotkeyLibrary { get; set; } = "Ctrl+Shift+L";
     public Dictionary<string, string> EditorKeys { get; set; } = new(EditorShortcuts.Defaults);
+    public string HotkeyCopyRegion { get; set; } = "Ctrl+Shift+C";
+    public string HotkeyWindowShot { get; set; } = "Ctrl+Shift+W";
+    public string HotkeyDelayShot { get; set; } = "Ctrl+Shift+T";
+    public string HotkeyPinShot { get; set; } = "Ctrl+Shift+P";
+    public string HotkeyScroll { get; set; } = "Ctrl+Shift+K";
+    public string HotkeyPause { get; set; } = "Ctrl+Shift+E";
+    public bool AutoCopyAfterCapture { get; set; } = false;
+    public int DelaySeconds { get; set; } = 3;
+    public int GifFps { get; set; } = 15;
+    public int GifWidth { get; set; } = 960;
+    public bool ShowClicks { get; set; } = true;
+    public bool ShowKeys { get; set; } = false;
+    public bool Webcam { get; set; } = false;
+    public int LibraryRetentionDays { get; set; } = 0;
+    public string UpdateFeedUrl { get; set; } = "";
     public bool StartWithWindows { get; set; } = false;
 }

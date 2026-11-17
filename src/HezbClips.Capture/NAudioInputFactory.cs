@@ -28,12 +28,15 @@ public class NAudioInputFactory : IAudioInputFactory
         readonly ManualResetEventSlim _stopped = new();
         WaveFileWriter? _writer;
         WasapiOut? _silence;
+        volatile bool _paused;
+
+        public void SetPaused(bool paused) => _paused = paused;
         public event Action<Exception?>? Stopped;
 
         public void Start(Stream wavOut)
         {
             _writer = new WaveFileWriter(wavOut, capture.WaveFormat);
-            capture.DataAvailable += (_, e) => { try { _writer?.Write(e.Buffer, 0, e.BytesRecorded); } catch (ObjectDisposedException) { } };
+            capture.DataAvailable += (_, e) => { try { if (!_paused) _writer?.Write(e.Buffer, 0, e.BytesRecorded); } catch (ObjectDisposedException) { } };
             capture.RecordingStopped += (_, e) =>
             {
                 try { _writer?.Dispose(); } catch (IOException) { }

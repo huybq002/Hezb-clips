@@ -22,6 +22,12 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
     int _w, _h; (int W, int H) _target;
     string _dir = "";
     bool _writeFailed;
+    volatile bool _paused;
+
+    /// <summary>Pause: frames and audio are dropped, so the result simply skips the paused stretch.</summary>
+    public void Pause() { _paused = true; audio.SetPaused(true); }
+    public void Resume() { audio.SetPaused(false); _paused = false; }
+    public bool IsPaused => _paused;
 
     /// <summary>Raised when a recording that was downgraded mid-way has been fully assembled.</summary>
     public event Action<string>? Finalized;
@@ -34,6 +40,7 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
         if (_w < 2 || _h < 2) throw new ArgumentException("region too small", nameof(r));
         _target = TargetSizeCalculator.Calculate(_w, _h, r.Quality);
         _dir = Directory.CreateTempSubdirectory("hezb-rec").FullName;
+        _paused = false;
         _plan.Clear(); _warnings.Clear(); _monitor = new FrameDropMonitor(); _writeFailed = false;
         _interval = TimeSpan.FromSeconds(1.0 / r.Fps);
         audio.Start(r.Audio, Path.Combine(_dir, "sys.wav"), Path.Combine(_dir, "mic.wav"));
@@ -62,7 +69,7 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
     {
         lock (_lock)
         {
-            if (_proc is null || _writeFailed) return;
+            if (_proc is null || _writeFailed || _paused) return;
             var sw = Stopwatch.StartNew();
             try { _proc.StdIn.Write(frame.Span); }
             catch (IOException) { _writeFailed = true; _warnings.Add("Video encoder stopped accepting frames."); return; }
