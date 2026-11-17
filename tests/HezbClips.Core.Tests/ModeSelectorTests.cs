@@ -13,6 +13,8 @@ public class ModeSelectorTests
         Assert.Equal(RecordMode.Background, ModeSelector.Choose(P(50), ExportQuality.P2160, VideoMode.Auto));
     [Fact] public void Auto_without_hw_encoder_is_background() =>
         Assert.Equal(RecordMode.Background, ModeSelector.Choose(P(200, enc: false), ExportQuality.P1080, VideoMode.Auto));
+    [Fact] public void Auto_fast_machine_without_vulkan_is_still_live() =>
+        Assert.Equal(RecordMode.Live, ModeSelector.Choose(P(70, vk: false), ExportQuality.P2160, VideoMode.Auto));
     [Fact] public void Forced_mode_wins() =>
         Assert.Equal(RecordMode.Live, ModeSelector.Choose(P(1, false, false), ExportQuality.P2160, VideoMode.Live));
 

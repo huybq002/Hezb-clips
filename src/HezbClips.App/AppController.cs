@@ -180,6 +180,7 @@ public sealed class AppController : IDisposable
     async Task ToggleRecordAsync()
     {
         if (_recording) { await StopRecordingAsync(); return; }
+        if (_bar is not null) { _bar.Close(); _bar = null; return; } // hotkey again cancels the pending record bar
         if (_busy) return;
         if (_recorder is null)
         {
