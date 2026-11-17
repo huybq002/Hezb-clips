@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -54,10 +54,10 @@ public sealed class AppController : IDisposable
         ThemeManager.Apply(_s.Theme);
         _tray = new TrayHost(new (string, Action)[]
         {
-            ("Chụp vùng", () => _ = RegionShotAsync()), ("Chụp toàn màn hình", () => _ = FullShotAsync()),
-            ("Chụp cửa sổ đang focus", () => _ = WindowShotAsync()), ("Chụp trễ", () => _ = DelayShotAsync()),
-            ("Chụp vùng và copy", () => _ = CopyRegionShotAsync()), ("Chụp vùng và ghim", () => _ = PinRegionShotAsync()),
-            ("Chụp cuộn trang", () => _ = ScrollShotAsync()), ("Quay GIF", () => _ = ToggleRecordAsync(gif: true)),
+            ("Chá»¥p vÃ¹ng", () => _ = RegionShotAsync()), ("Chá»¥p toÃ n mÃ n hÃ¬nh", () => _ = FullShotAsync()),
+            ("Chá»¥p cá»­a sá»• Ä‘ang focus", () => _ = WindowShotAsync()), ("Chá»¥p trá»…", () => _ = DelayShotAsync()),
+            ("Chá»¥p vÃ¹ng vÃ  copy", () => _ = CopyRegionShotAsync()), ("Chá»¥p vÃ¹ng vÃ  ghim", () => _ = PinRegionShotAsync()),
+            ("Chá»¥p cuá»™n trang", () => _ = ScrollShotAsync()), ("Quay GIF", () => _ = ToggleRecordAsync(gif: true)),
         }, () => _ = ToggleRecordAsync(), OpenSettings, () => _app.Shutdown(), OpenLibrary);
         _hk = new Win32Hotkeys();
         _hotkeys = new HotkeyService(_hk);
@@ -66,11 +66,13 @@ public sealed class AppController : IDisposable
         _esrgan = ToolLocator.FindRealEsrgan();
         _ffmpeg = ToolLocator.FindFfmpeg();
         if (_ffmpeg is null)
-            _tray.Balloon("Hezb Clips", "Không tìm thấy ffmpeg. Quay video và upscale video bị tắt. Hãy đặt ffmpeg.exe vào thư mục 'tools' cạnh ứng dụng.");
+            _tray.Balloon("Hezb Clips", "KhÃ´ng tÃ¬m tháº¥y ffmpeg. Quay video vÃ  upscale video bá»‹ táº¯t. HÃ£y Ä‘áº·t ffmpeg.exe vÃ o thÆ° má»¥c 'tools' cáº¡nh á»©ng dá»¥ng.");
         else
             DetectHardware(force: false);
         if (_failures.Count > 0)
-            _tray.Balloon("Phím tắt bị chiếm", string.Join(", ", _failures.Select(f => f.Combo)) + ". Bấm để đổi trong Cài đặt.", OpenSettings);
+            _tray.Balloon("PhÃ­m táº¯t bá»‹ chiáº¿m", string.Join(", ", _failures.Select(f => f.Combo)) + ". Báº¥m Ä‘á»ƒ Ä‘á»•i trong CÃ i Ä‘áº·t.", OpenSettings);
+        CleanupLibrary();
+        AutoCheckUpdate();
         if (showMain) OpenLibrary();
     }
 
@@ -131,7 +133,7 @@ public sealed class AppController : IDisposable
                 _hwStore.Save(profile);
                 _app.Dispatcher.Invoke(() => InitVideo(profile, enc));
             }
-            catch (Exception ex) { _app.Dispatcher.Invoke(() => Report("Dò cấu hình lỗi", ex)); }
+            catch (Exception ex) { _app.Dispatcher.Invoke(() => Report("DÃ² cáº¥u hÃ¬nh lá»—i", ex)); }
         });
     }
 
@@ -140,7 +142,7 @@ public sealed class AppController : IDisposable
         _profile = profile; _enc = enc;
         if (_recording) return; // keep the running recorder; new profile applies after restart
         _queue = new BackgroundUpscaleQueue(new FfmpegUpscaleRunner(profile, _ffmpeg!, _esrgan, enc));
-        _queue.Progress += (_, p) => _app.Dispatcher.Invoke(() => _tray?.SetTooltip($"Hezb Clips — upscale {p:P0}"));
+        _queue.Progress += (_, p) => _app.Dispatcher.Invoke(() => _tray?.SetTooltip($"Hezb Clips â€” upscale {p:P0}"));
         _queue.Completed += (_, path) => _app.Dispatcher.Invoke(() =>
         {
             _tray?.SetTooltip("Hezb Clips");
@@ -150,13 +152,13 @@ public sealed class AppController : IDisposable
         _queue.Failed += (_, ex) => _app.Dispatcher.Invoke(() =>
         {
             _tray?.SetTooltip("Hezb Clips");
-            Report("Upscale lỗi", ex);
+            Report("Upscale lá»—i", ex);
         });
         _recorder = new VideoRecorder(new WgcFrameSource(), new AudioRecorder(new NAudioInputFactory()),
             () => new FfmpegProcess(_ffmpeg!), _queue, enc, _s);
         _recorder.Finalized += path => _app.Dispatcher.Invoke(() => ShowPopup(path, true, null));
         _recorder.FinalizeFailed += (ex, dir) => _app.Dispatcher.Invoke(() =>
-            _tray?.Balloon("Ghép video lỗi", $"{ex.Message} (file tạm: {dir})"));
+            _tray?.Balloon("GhÃ©p video lá»—i", $"{ex.Message} (file táº¡m: {dir})"));
     }
 
     // ---- screenshots ----
@@ -173,7 +175,7 @@ public sealed class AppController : IDisposable
     Task WindowShotAsync() => ShotAsync(() =>
     {
         var r = WindowFinder.Foreground(OwnHandles());
-        if (r is null) Toast.Show("Không xác định được cửa sổ đang làm việc");
+        if (r is null) Toast.Show("KhÃ´ng xÃ¡c Ä‘á»‹nh Ä‘Æ°á»£c cá»­a sá»• Ä‘ang lÃ m viá»‡c");
         return Task.FromResult(r);
     }, ShotMode.Normal);
 
@@ -206,7 +208,7 @@ public sealed class AppController : IDisposable
             var path = await Task.Run(() => Shots().TakeRegionAsync(r.Value));
             AfterImage(path, mode, r.Value);
         }
-        catch (Exception ex) { Report("Lỗi chụp ảnh", ex); }
+        catch (Exception ex) { Report("Lá»—i chá»¥p áº£nh", ex); }
         finally { _busy = false; RestoreMain(); }
     }
 
@@ -227,14 +229,14 @@ public sealed class AppController : IDisposable
     void AfterImage(string path, ShotMode mode, System.Drawing.Rectangle region)
     {
         if (mode == ShotMode.CopyOnly || _s.AutoCopyAfterCapture)
-            if (CopyImage(path)) Toast.Show("Đã copy ảnh vào clipboard");
+            if (CopyImage(path)) Toast.Show("ÄÃ£ copy áº£nh vÃ o clipboard");
         if (mode == ShotMode.CopyOnly) return;
         if (mode == ShotMode.Pin)
         {
             using var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero);
             var k = g.DpiX / 96.0;
             try { PinWindow.FromFile(path, new Point(region.X / k - 8, region.Y / k - 8)).Show(); }
-            catch (Exception ex) { Report("Không ghim được ảnh", ex); }
+            catch (Exception ex) { Report("KhÃ´ng ghim Ä‘Æ°á»£c áº£nh", ex); }
             return;
         }
         if (_s.OpenEditorAfterCapture) OpenEditor(path); else ShowPopup(path, false, null);
@@ -270,7 +272,7 @@ public sealed class AppController : IDisposable
         if (_recorder is null)
         {
             Report("Record not ready", new InvalidOperationException($"ffmpeg={_ffmpeg ?? "null"}"));
-            _tray?.Balloon("Hezb Clips", _ffmpeg is null ? "Chưa có ffmpeg nên chưa quay được." : "Đang dò cấu hình máy, thử lại sau vài giây.");
+            _tray?.Balloon("Hezb Clips", _ffmpeg is null ? "ChÆ°a cÃ³ ffmpeg nÃªn chÆ°a quay Ä‘Æ°á»£c." : "Äang dÃ² cáº¥u hÃ¬nh mÃ¡y, thá»­ láº¡i sau vÃ i giÃ¢y.");
             return;
         }
         _busy = true;
@@ -327,7 +329,7 @@ public sealed class AppController : IDisposable
         }
         catch (Exception ex)
         {
-            Report("Không bắt đầu quay được", ex);
+            Report("KhÃ´ng báº¯t Ä‘áº§u quay Ä‘Æ°á»£c", ex);
             _bar?.Close(); _bar = null; CloseFocus();
         }
     }
@@ -363,23 +365,35 @@ public sealed class AppController : IDisposable
             if (wasGif)
             {
                 var gifPath = await Task.Run(() => ConvertToGif(r.FinalPath));
-                if (gifPath is not null) ShowPopup(gifPath, false, $"GIF {_s.GifFps} fps, tối đa 60 giây.");
-                else _tray?.Balloon("Hezb Clips", "Không tạo được GIF. Video gốc vẫn được giữ: " + Path.GetFileName(r.FinalPath));
+                if (gifPath is not null) ShowPopup(gifPath, false, $"GIF {_s.GifFps} fps, tá»‘i Ä‘a 60 giÃ¢y.");
+                else _tray?.Balloon("Hezb Clips", "KhÃ´ng táº¡o Ä‘Æ°á»£c GIF. Video gá»‘c váº«n Ä‘Æ°á»£c giá»¯: " + Path.GetFileName(r.FinalPath));
                 return;
             }
             var notes = new List<string>(r.Warnings);
             if (r.PendingUpscaleJob is not null && File.Exists(r.FinalPath))
-                notes.Add($"Đang upscale lên {(int)_quality}p ở nền; file mới sẽ có tên *_{(int)_quality}p.mp4.");
+                notes.Add($"Äang upscale lÃªn {(int)_quality}p á»Ÿ ná»n; file má»›i sáº½ cÃ³ tÃªn *_{(int)_quality}p.mp4.");
             if (File.Exists(r.FinalPath)) ShowPopup(r.FinalPath, true, notes.Count > 0 ? string.Join(" ", notes) : null);
-            else _tray?.Balloon("Hezb Clips", "Đang ghép video (upscale phần cuối ở nền). Sẽ báo khi xong.");
+            else _tray?.Balloon("Hezb Clips", "Äang ghÃ©p video (upscale pháº§n cuá»‘i á»Ÿ ná»n). Sáº½ bÃ¡o khi xong.");
         }
-        catch (Exception ex) { Report("Lỗi khi dừng quay", ex); }
+        catch (Exception ex) { Report("Lá»—i khi dá»«ng quay", ex); }
         finally { RestoreMain(); }
     }
 
-    // effects drawn on screen during recording (click ripples, key badges, webcam) — filled in by RecordingEffects
-    void StartEffects(System.Drawing.Rectangle region, RecordChoices c) { }
-    void StopEffects() { }
+    // effects drawn on screen during recording (click ripples, key badges, webcam) â€” filled in by RecordingEffects
+    RecordingEffects? _effects;
+
+    void StartEffects(System.Drawing.Rectangle region, RecordChoices c)
+    {
+        if (!(c.Clicks || c.Keys || c.Webcam)) return;
+        try
+        {
+            _effects = new RecordingEffects(region, c.Clicks, c.Keys, c.Webcam, msg => Toast.Show(msg));
+            _effects.Start();
+        }
+        catch (Exception ex) { Report("KhÃ´ng báº­t Ä‘Æ°á»£c hiá»‡u á»©ng khi quay", ex); }
+    }
+
+    void StopEffects() { _effects?.Dispose(); _effects = null; }
 
     // ---- popup / trim / settings ----
 
@@ -401,7 +415,7 @@ public sealed class AppController : IDisposable
             File.Delete(mp4);
             return gif;
         }
-        catch (Exception ex) { _app.Dispatcher.Invoke(() => Report("Tạo GIF lỗi", ex)); return null; }
+        catch (Exception ex) { _app.Dispatcher.Invoke(() => Report("Táº¡o GIF lá»—i", ex)); return null; }
     }
 
     void OpenLibrary() => OpenMain(settings: false);
@@ -420,7 +434,10 @@ public sealed class AppController : IDisposable
                 Record: () => _ = ToggleRecordAsync(), Gif: () => _ = ToggleRecordAsync(gif: true),
                 Edit: OpenEditor, Save: OnSettingsSaved,
                 Redetect: () => { if (_ffmpeg is not null) DetectHardware(force: true); },
-                Theme: ThemeManager.Apply));
+                Theme: ThemeManager.Apply),
+                advanced: st => AdvancedPage.Build(st, new AdvancedHost(
+                    EsrganPath: () => _esrgan, InstallEsrgan: InstallEsrganAsync, CheckUpdate: CheckUpdateAsync,
+                    DownloadUpdate: DownloadUpdateAsync, CurrentVersion: CurrentVersion.ToString(3))));
             _main.Closed += (_, _) => _main = null;
         }
         if (!_main.IsVisible) _main.Show();
@@ -429,12 +446,132 @@ public sealed class AppController : IDisposable
         _main.Activate();
     }
 
-    Task ScrollShotAsync() { Toast.Show("Chụp cuộn trang sẽ có trong bản sau"); return Task.CompletedTask; }
+    // ---- optional tools and updates ----
+
+    readonly System.Net.Http.HttpClient _http = NewHttp();
+
+    static System.Net.Http.HttpClient NewHttp()
+    {
+        var c = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(15) };
+        c.DefaultRequestHeaders.UserAgent.ParseAdd("HezbClips");
+        return c;
+    }
+
+    static Version CurrentVersion => System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version ?? new Version(1, 0, 0);
+
+    async Task InstallEsrganAsync(IProgress<double> progress)
+    {
+        var exe = await new HezbClips.Core.Tools.ToolInstaller(_http).InstallRealEsrganAsync(Path.Combine(_dataDir, "tools"), progress);
+        _esrgan = exe;
+        if (_ffmpeg is not null) DetectHardware(force: true); // re-probe: Vulkan now testable, upscaler picked up
+    }
+
+    Task<HezbClips.Core.Tools.UpdateInfo?> CheckUpdateAsync(string feedUrl) =>
+        new HezbClips.Core.Tools.UpdateChecker(_http).CheckAsync(feedUrl, CurrentVersion);
+
+    Task<string> DownloadUpdateAsync(HezbClips.Core.Tools.UpdateInfo info, IProgress<double> progress) =>
+        new HezbClips.Core.Tools.UpdateChecker(_http).DownloadAsync(info, Path.Combine(Path.GetTempPath(), "HezbClips-update"), progress);
+
+    /// <summary>Quiet check at startup; only speaks up when a newer version exists.</summary>
+    void AutoCheckUpdate()
+    {
+        if (!_s.AutoCheckUpdates || string.IsNullOrWhiteSpace(_s.UpdateFeedUrl)) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var info = await CheckUpdateAsync(_s.UpdateFeedUrl);
+                if (info is not null)
+                    _app.Dispatcher.Invoke(() => _tray?.Balloon("CÃ³ báº£n cáº­p nháº­t Hezb Clips", $"PhiÃªn báº£n {info.Version} Ä‘Ã£ sáºµn sÃ ng. Báº¥m Ä‘á»ƒ má»Ÿ CÃ i Ä‘áº·t > NÃ¢ng cao.", () => { OpenSettings(); _main?.ShowSettings("NÃ¢ng cao"); }));
+            }
+            catch (Exception) { /* offline or bad feed: stay quiet at startup */ }
+        });
+    }
+
+    bool _scrolling, _scrollCancel;
+
+    /// <summary>Pick the scrollable area, then scroll it with the mouse wheel and stitch the frames into one tall image.</summary>
+    async Task ScrollShotAsync()
+    {
+        if (_scrolling) { _scrollCancel = true; return; } // pressing the hotkey again stops early
+        if (_busy || _recording) return;
+        _busy = true;
+        await HideMainAsync();
+        try
+        {
+            var r = await RegionSelector.SelectAsync();
+            if (r is null) return;
+            _scrolling = true; _scrollCancel = false;
+            Toast.Show("Äang cuá»™n vÃ  chá»¥pâ€¦ Ä‘á»«ng di chuá»™t. Báº¥m láº¡i phÃ­m táº¯t Ä‘á»ƒ dá»«ng.");
+            await Task.Delay(500);
+            var path = await Task.Run(() => CaptureScrolling(r.Value));
+            if (path is not null) AfterImage(path, ShotMode.Normal, r.Value);
+        }
+        catch (Exception ex) { Report("Lá»—i chá»¥p cuá»™n trang", ex); }
+        finally { _scrolling = false; _busy = false; RestoreMain(); }
+    }
+
+    string? CaptureScrolling(System.Drawing.Rectangle region)
+    {
+        var src = new WgcCaptureSource();
+        var cursor = System.Windows.Forms.Cursor.Position;
+        var strips = new List<SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>>();
+        var prev = src.CaptureRegion(region);
+        var first = prev.Clone();
+        var notches = Math.Clamp((int)Math.Round(region.Height * 0.5 / 100.0), 1, 10);
+        var total = first.Height;
+        try
+        {
+            for (int i = 0; i < 120 && !_scrollCancel && total < 16000; i++)
+            {
+                WinNative.ScrollDown(region.X + region.Width / 2, region.Y + region.Height / 2, notches);
+                System.Threading.Thread.Sleep(600); // let smooth scrolling settle
+                var next = src.CaptureRegion(region);
+                var shift = ScrollStitcher.FindShift(prev, next);
+                if (shift <= 0) { next.Dispose(); break; } // end of page (or could not align)
+                strips.Add(ScrollStitcher.Strip(next, shift));
+                total += shift;
+                prev.Dispose(); prev = next;
+            }
+            using var result = ScrollStitcher.Assemble(first, strips);
+            Directory.CreateDirectory(_s.OutputDir);
+            var path = HezbClips.Core.Output.FileNamer.Next(_s.OutputDir, "Scroll", "png", DateTime.Now, File.Exists);
+            SixLabors.ImageSharp.ImageExtensions.SaveAsPng(result, path);
+            return path;
+        }
+        finally
+        {
+            prev.Dispose(); first.Dispose(); foreach (var s in strips) s.Dispose();
+            System.Windows.Forms.Cursor.Position = cursor;
+        }
+    }
+
+    void CleanupLibrary()
+    {
+        if (_s.LibraryRetentionDays <= 0) return;
+        var dir = _s.OutputDir; var days = _s.LibraryRetentionDays;
+        Task.Run(() =>
+        {
+            try
+            {
+                var meta = new HezbClips.Core.Output.LibraryMetaStore(Path.Combine(_dataDir, "library.json"));
+                var old = HezbClips.Core.Output.LibraryCleaner.FindExpired(HezbClips.Core.Output.LibraryScanner.Scan(dir), meta, days, DateTime.Now);
+                var n = 0;
+                foreach (var item in old)
+                {
+                    try { Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(item.Path, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin); n++; }
+                    catch (Exception) { /* in use or already gone */ }
+                }
+                if (n > 0) _app.Dispatcher.Invoke(() => _tray?.Balloon("Hezb Clips", $"ÄÃ£ chuyá»ƒn {n} file cÅ© hÆ¡n {days} ngÃ y vÃ o thÃ¹ng rÃ¡c."));
+            }
+            catch (Exception ex) { _app.Dispatcher.Invoke(() => Report("Dá»n thÆ° viá»‡n lá»—i", ex)); }
+        });
+    }
 
     void PinFile(string path)
     {
         try { PinWindow.FromFile(path).Show(); }
-        catch (Exception ex) { Report("Không ghim được ảnh", ex); }
+        catch (Exception ex) { Report("KhÃ´ng ghim Ä‘Æ°á»£c áº£nh", ex); }
     }
 
     void OpenEditor(string imagePath)
@@ -444,7 +581,7 @@ public sealed class AppController : IDisposable
             var w = new ImageEditorWindow(imagePath, _s.EditorKeys);
             w.Show(); w.Activate();
         }
-        catch (Exception ex) { Report("Không mở được trình chỉnh sửa", ex); }
+        catch (Exception ex) { Report("KhÃ´ng má»Ÿ Ä‘Æ°á»£c trÃ¬nh chá»‰nh sá»­a", ex); }
     }
 
     string? TrimVideo(string path, TimeSpan from, TimeSpan to)
@@ -457,7 +594,7 @@ public sealed class AppController : IDisposable
             p.Start(TrimService.BuildArgs(path, output, from, to, _enc));
             return p.ExitAsync().GetAwaiter().GetResult() == 0 ? output : null;
         }
-        catch (Exception ex) { Report("Cắt video lỗi", ex); return null; }
+        catch (Exception ex) { Report("Cáº¯t video lá»—i", ex); return null; }
     }
 
     void OnSettingsSaved(AppSettings s)
@@ -466,7 +603,7 @@ public sealed class AppController : IDisposable
         RegisterHotkeys();
         _main?.SetFolder(_s.OutputDir);
         if (_failures.Count > 0)
-            _tray?.Balloon("Phím tắt bị chiếm", string.Join(", ", _failures.Select(f => f.Combo)));
+            _tray?.Balloon("PhÃ­m táº¯t bá»‹ chiáº¿m", string.Join(", ", _failures.Select(f => f.Combo)));
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);

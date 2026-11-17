@@ -24,6 +24,9 @@ public static class ToolLocator
 
     public static string? FindRealEsrgan()
     {
+        // installed from Settings (user data folder) first, then next to the app
+        var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HezbClips", "tools", "realesrgan", "realesrgan-ncnn-vulkan.exe");
+        if (File.Exists(data)) return data;
         var p = Path.Combine(AppContext.BaseDirectory, "tools", "realesrgan", "realesrgan-ncnn-vulkan.exe");
         return File.Exists(p) ? p : null;
     }

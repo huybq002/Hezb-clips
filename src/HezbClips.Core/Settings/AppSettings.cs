@@ -39,5 +39,6 @@ public class AppSettings
     public bool Webcam { get; set; } = false;
     public int LibraryRetentionDays { get; set; } = 0;
     public string UpdateFeedUrl { get; set; } = "";
+    public bool AutoCheckUpdates { get; set; } = true;
     public bool StartWithWindows { get; set; } = false;
 }

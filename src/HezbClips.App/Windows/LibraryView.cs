@@ -19,6 +19,10 @@ namespace HezbClips.App.Windows;
 public sealed class LibraryView : DockPanel
 {
     readonly string _thumbCache;
+    readonly LibraryMetaStore _meta;
+    readonly TextBox _search = new() { Width = 200, Margin = new Thickness(6, 0, 0, 0), ToolTip = "Tìm theo tên file hoặc #thẻ" };
+    readonly TextBlock _searchHint = new() { Text = "🔍 Tìm tên hoặc #thẻ", Foreground = Ui.Brush("Disabled"), FontSize = 13, IsHitTestVisible = false, Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left };
+    bool _starOnly;
     readonly string? _ffmpeg;
     readonly Action<string>? _edit, _pin;
     readonly WrapPanel _grid = new() { Margin = new Thickness(-6, 4, 0, 12) };
@@ -37,6 +41,7 @@ public sealed class LibraryView : DockPanel
     public LibraryView(string outputDir, string? ffmpeg, string dataDir, Action<string>? edit, Action<string>? pin = null)
     {
         _dirValue = outputDir; _ffmpeg = ffmpeg; _thumbCache = Path.Combine(dataDir, "thumbs"); _edit = edit; _pin = pin;
+        _meta = new LibraryMetaStore(Path.Combine(dataDir, "library.json"));
 
         var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
         var right = new StackPanel { Orientation = Orientation.Horizontal };
@@ -54,6 +59,12 @@ public sealed class LibraryView : DockPanel
             _chips.Add(c); chips.Children.Add(c);
         }
         Chip("Tất cả", null); Chip("🖼 Ảnh", MediaKind.Image); Chip("🎞 Video", MediaKind.Video); Chip("GIF", MediaKind.Gif);
+        var starChip = new ToggleButton { Content = "★ Gắn sao", Margin = new Thickness(0, 0, 6, 0), ToolTip = "Chỉ hiện file đã gắn sao" };
+        starChip.Click += (_, _) => { _starOnly = starChip.IsChecked == true; Reload(); };
+        chips.Children.Add(starChip);
+        var searchBox = new Grid(); searchBox.Children.Add(_search); searchBox.Children.Add(_searchHint);
+        _search.TextChanged += (_, _) => { _searchHint.Visibility = _search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; Reload(); };
+        chips.Children.Add(searchBox);
         bar.Children.Add(right); bar.Children.Add(chips);
 
         var body = new Grid();
@@ -66,10 +77,10 @@ public sealed class LibraryView : DockPanel
     public void Reload()
     {
         var items = LibraryScanner.Scan(_dir);
-        var shown = _filter is null ? items : items.Where(i => i.Kind == _filter).ToList();
-        _summary.Text = $"{items.Count} mục · {FormatSize(items.Sum(i => i.Size))}";
+        var shown = LibraryQuery.Filter(items, _meta, _search.Text, _starOnly, _filter);
+        _summary.Text = shown.Count == items.Count ? $"{items.Count} mục · {FormatSize(items.Sum(i => i.Size))}" : $"{shown.Count}/{items.Count} mục";
         _empty.Visibility = shown.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        var sig = _filter + ":" + string.Join('|', shown.Select(i => i.Path + i.Modified.Ticks));
+        var sig = _filter + ":" + _starOnly + ":" + _search.Text + ":" + string.Join('|', shown.Select(i => i.Path + i.Modified.Ticks));
         if (_grid.Tag as string == sig) return; // Activated fires often: keep cards when nothing changed
         _grid.Tag = sig; _grid.Children.Clear(); _version++;
         foreach (var item in shown) _grid.Children.Add(Card(item, _version));
@@ -102,6 +113,16 @@ public sealed class LibraryView : DockPanel
                 HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
                 Child = new TextBlock { Text = badge, Foreground = Brushes.White, FontSize = 10, FontWeight = FontWeights.Bold },
             });
+        var star = new Button
+        {
+            Content = _meta.IsStarred(item.Path) ? "★" : "☆", FontSize = 16, Width = 30, Height = 30, Padding = new Thickness(0), Margin = new Thickness(6),
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, ToolTip = "Gắn / bỏ sao",
+            Background = new SolidColorBrush(Color.FromArgb(190, 27, 28, 34)), BorderBrush = Brushes.Transparent,
+            Foreground = _meta.IsStarred(item.Path) ? new SolidColorBrush(Color.FromRgb(255, 214, 10)) : Brushes.White,
+        };
+        star.Click += (_, e) => { _meta.ToggleStar(item.Path); _grid.Tag = null; Reload(); e.Handled = true; };
+        star.MouseLeftButtonUp += (_, e) => e.Handled = true;
+        thumbBox.Children.Add(star);
         thumbBox.Clip = new RectangleGeometry(new Rect(0, 0, 204, 140), 8, 8);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
@@ -117,12 +138,23 @@ public sealed class LibraryView : DockPanel
         A("📋", "Copy", () => CopyItem(item));
         if (item.Kind == MediaKind.Image && _edit is not null) A("✏", "Chỉnh sửa", () => _edit(item.Path));
         if (item.Kind != MediaKind.Video && _pin is not null) A("📌", "Ghim lên màn hình", () => _pin(item.Path));
+        A("🏷", "Gắn thẻ", () =>
+        {
+            var current = string.Join(", ", _meta.Get(item.Path).Tags);
+            var text = PromptWindow.Ask(Window.GetWindow(this), "Gắn thẻ", "Các thẻ cách nhau bằng dấu phẩy, ví dụ: lỗi, thiết kế, khách hàng", current);
+            if (text is null) return;
+            _meta.SetTags(item.Path, LibraryMetaStore.ParseTags(text));
+            _grid.Tag = null; Reload();
+        });
         A("🗑", "Xóa (vào thùng rác)", () => Delete(item));
 
         var col = new StackPanel();
         col.Children.Add(thumbBox);
         col.Children.Add(new TextBlock { Text = Path.GetFileName(item.Path), Foreground = Ui.Brush("Text"), FontSize = 12, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 8, 0, 0) });
         col.Children.Add(new TextBlock { Text = $"{item.Modified:dd/MM/yyyy HH:mm} · {FormatSize(item.Size)}", Foreground = Ui.Brush("TextDim"), FontSize = 11, Margin = new Thickness(0, 2, 0, 0) });
+        var tags = _meta.Get(item.Path).Tags;
+        if (tags.Count > 0)
+            col.Children.Add(new TextBlock { Text = string.Join(" ", tags.Select(t => "#" + t)), Foreground = Ui.Brush("Accent"), FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 3, 0, 0) });
         col.Children.Add(actions);
 
         var card = new Border

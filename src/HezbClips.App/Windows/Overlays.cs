@@ -21,6 +21,16 @@ static class WinNative
     const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
     const int GWL_EXSTYLE = -20, WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000;
 
+    [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
+
+    /// <summary>Park the mouse at (x, y) and turn the wheel down by the given number of notches.</summary>
+    public static void ScrollDown(int x, int y, int notches)
+    {
+        SetCursorPos(x, y);
+        for (int i = 0; i < notches; i++) mouse_event(0x0800 /*MOUSEEVENTF_WHEEL*/, 0, 0, unchecked((uint)-120), UIntPtr.Zero);
+    }
+
     /// <summary>Hide the window from screenshots and recordings.</summary>
     public static void ExcludeFromCapture(Window w) => SetWindowDisplayAffinity(new WindowInteropHelper(w).EnsureHandle(), WDA_EXCLUDEFROMCAPTURE);
 
