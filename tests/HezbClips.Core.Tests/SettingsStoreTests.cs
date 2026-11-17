@@ -30,3 +30,20 @@ public class SettingsStoreTests
         Assert.Equal(ExportQuality.P1080, new SettingsStore(p).Load().Quality);
     }
 }
+
+public class SettingsMigrationTests
+{
+    [Fact] public void Old_file_gets_auto_copy_on()
+    {
+        var p = Path.GetTempFileName(); File.WriteAllText(p, "{\"AutoCopyAfterCapture\":false}");
+        Assert.True(new SettingsStore(p).Load().AutoCopyAfterCapture);
+    }
+
+    [Fact] public void Current_file_keeps_user_choice()
+    {
+        var p = Path.GetTempFileName(); File.WriteAllText(p, "{\"AutoCopyAfterCapture\":false,\"SchemaVersion\":2}");
+        Assert.False(new SettingsStore(p).Load().AutoCopyAfterCapture);
+    }
+
+    [Fact] public void Missing_file_defaults_on() => Assert.True(new SettingsStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json")).Load().AutoCopyAfterCapture);
+}

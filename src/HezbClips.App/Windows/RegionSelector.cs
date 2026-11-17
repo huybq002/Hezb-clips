@@ -19,7 +19,9 @@ public static class RegionSelector
 {
     static readonly HashSet<IntPtr> Overlays = new();
 
-    public static Task<System.Drawing.Rectangle?> SelectAsync()
+    /// <param name="frozen">Screenshots taken just before selecting, keyed by screen bounds. When given, each overlay shows
+    /// its screen's frozen picture (dimmed) so nothing moves while the user picks the region.</param>
+    public static Task<System.Drawing.Rectangle?> SelectAsync(IReadOnlyDictionary<System.Drawing.Rectangle, System.Windows.Media.Imaging.BitmapSource>? frozen = null)
     {
         var tcs = new TaskCompletionSource<System.Drawing.Rectangle?>();
         var windows = new List<OverlayWindow>();
@@ -32,7 +34,9 @@ public static class RegionSelector
         }
         foreach (var screen in Forms.Screen.AllScreens)
         {
-            var w = new OverlayWindow(screen.Bounds, Finish, Overlays);
+            System.Windows.Media.Imaging.BitmapSource? pic = null;
+            frozen?.TryGetValue(screen.Bounds, out pic);
+            var w = new OverlayWindow(screen.Bounds, Finish, Overlays, pic);
             windows.Add(w);
             w.Show();
             Overlays.Add(new WindowInteropHelper(w).Handle);
@@ -57,7 +61,7 @@ public static class RegionSelector
         System.Drawing.Rectangle? _hoverPhysical;
         Point _start; bool _dragging, _moved;
 
-        public OverlayWindow(System.Drawing.Rectangle bounds, Action<System.Drawing.Rectangle?> finish, HashSet<IntPtr> ignore)
+        public OverlayWindow(System.Drawing.Rectangle bounds, Action<System.Drawing.Rectangle?> finish, HashSet<IntPtr> ignore, System.Windows.Media.Imaging.BitmapSource? frozen = null)
         {
             _bounds = bounds; _finish = finish; _ignore = ignore;
             WindowStyle = WindowStyle.None; AllowsTransparency = true; ResizeMode = ResizeMode.NoResize;
@@ -65,7 +69,17 @@ public static class RegionSelector
             Topmost = true; ShowInTaskbar = false; Cursor = Cursors.Cross;
             WindowStartupLocation = WindowStartupLocation.Manual;
             _canvas.Children.Add(_hover); _canvas.Children.Add(_sel); _canvas.Children.Add(_label);
-            Content = _canvas;
+            if (frozen is null) Content = _canvas;
+            else
+            {
+                // frozen screen underneath, the usual dim on top of it
+                Background = new ImageBrush(frozen) { Stretch = Stretch.Fill };
+                RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.NearestNeighbor);
+                var root = new Grid();
+                root.Children.Add(new Rectangle { Fill = new SolidColorBrush(Color.FromArgb(90, 0, 0, 0)), IsHitTestVisible = false });
+                root.Children.Add(_canvas);
+                Content = root;
+            }
             SourceInitialized += (_, _) => Place();
             Loaded += (_, _) => Place();
             MouseLeftButtonDown += OnDown; MouseMove += OnMove; MouseLeftButtonUp += OnUp;

@@ -96,6 +96,38 @@ public class ScrollStitcherTests
         Assert.Equal(ScrollStitcher.NoMatch, ScrollStitcher.FindShift(a, other));
     }
 
+    // what the browser shows: a fixed header and footer drawn over the scrolled page
+    static Image<Rgba32> ViewWithChrome(Image<Rgba32> page, int y, int h, int header, int footer)
+    {
+        var v = Window(page, y, h);
+        for (int yy = 0; yy < h; yy++)
+            for (int x = 0; x < page.Width; x++)
+            {
+                if (yy < header) v[x, yy] = new Rgba32(30, 60, 200, 255);
+                else if (yy >= h - footer) v[x, yy] = new Rgba32(200, 60, 30, 255);
+            }
+        return v;
+    }
+
+    [Fact] public void Sticky_header_and_footer_are_ignored()
+    {
+        using var page = Page(100, 1000);
+        const int H = 300, head = 40, foot = 30;
+        var frames = new List<Image<Rgba32>>();
+        foreach (var y in new[] { 0, 110, 220, 330, 440, 550, 660, 700, 700 }) frames.Add(ViewWithChrome(page, y, H, head, foot));
+        var (img, used) = ScrollStitcher.Stitch(frames);
+        using (img)
+        {
+            Assert.Equal(8, used);
+            // header once at the top, footer once at the bottom, page content contiguous in between
+            Assert.Equal(700 + H, img.Height);
+            Assert.Equal(frames[0][5, 5], img[5, 5]);
+            Assert.Equal(frames[^1][5, H - 5], img[5, img.Height - 5]);
+            for (int y = head; y < img.Height - foot; y += 23) Assert.Equal(page[7, y], img[7, y]);
+        }
+        foreach (var f in frames) f.Dispose();
+    }
+
     [Fact] public void Stitch_rebuilds_the_page_and_stops_at_the_end()
     {
         using var page = Page(100, 800);

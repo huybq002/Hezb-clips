@@ -92,7 +92,7 @@ public sealed partial class ImageEditorWindow : Window
         {
             var key = _keys[t.ToString()];
             var label = new StackPanel { Orientation = Orientation.Horizontal };
-            label.Children.Add(new TextBlock { Text = $"{icon} {name}" });
+            var lc = Ui.Content($"{icon} {name}"); label.Children.Add(lc as UIElement ?? new TextBlock { Text = (string)lc });
             label.Children.Add(new Border
             {
                 Margin = new Thickness(7, 0, 0, 0), Padding = new Thickness(5, 0, 5, 0), CornerRadius = new CornerRadius(4), VerticalAlignment = VerticalAlignment.Center,
@@ -107,16 +107,16 @@ public sealed partial class ImageEditorWindow : Window
             b.Click += (_, _) => SelectTool(t);
             _toolButtons[t] = b; wrap.Children.Add(b);
         }
-        ToolBtn(Tool.Pen, "✏", "Bút", "P");
-        ToolBtn(Tool.Highlighter, "🖍", "Tô sáng", "H");
+        ToolBtn(Tool.Pen, "\uE70F", "Bút", "P");
+        ToolBtn(Tool.Highlighter, "\uE7E6", "Tô sáng", "H");
         ToolBtn(Tool.Line, "╱", "Đường thẳng", "L");
-        ToolBtn(Tool.Arrow, "➜", "Mũi tên", "A");
-        ToolBtn(Tool.Rect, "▭", "Chữ nhật", "R");
-        ToolBtn(Tool.Ellipse, "◯", "Elip", "O");
-        ToolBtn(Tool.Text, "T", "Chữ", "T");
+        ToolBtn(Tool.Arrow, "\uE72A", "Mũi tên", "A");
+        ToolBtn(Tool.Rect, "\uE739", "Chữ nhật", "R");
+        ToolBtn(Tool.Ellipse, "\uEA3A", "Elip", "O");
+        ToolBtn(Tool.Text, "\uE8D2", "Chữ", "T");
         ToolBtn(Tool.Number, "①", "Số", "N");
         ToolBtn(Tool.Mosaic, "▦", "Làm mờ", "M");
-        ToolBtn(Tool.Crop, "✂", "Cắt ảnh", "X");
+        ToolBtn(Tool.Crop, "\uE7A8", "Cắt ảnh", "X");
         Sep();
 
         wrap.Children.Add(_currentColorChip);
@@ -132,7 +132,7 @@ public sealed partial class ImageEditorWindow : Window
             sw.Click += (_, _) => SelectColor(hex);
             _swatches.Add(sw); wrap.Children.Add(sw);
         }
-        var custom = new Button { Content = "🎨", ToolTip = "Màu tùy chọn (C)", Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(8, 3, 8, 3) };
+        var custom = new Button { Content = Ui.Glyph("\uE790"), ToolTip = "Màu tùy chọn (C)", Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(8, 3, 8, 3) };
         custom.Click += (_, _) => PickCustomColor();
         wrap.Children.Add(custom);
         Sep();
@@ -146,23 +146,23 @@ public sealed partial class ImageEditorWindow : Window
 
         Button Act(string text, string tip, Action a, bool primary = false)
         {
-            var b = new Button { Content = text, ToolTip = tip, Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(10, 5, 10, 5) };
+            var b = new Button { Content = Ui.Content(text), ToolTip = tip, Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(10, 5, 10, 5) };
             if (primary) b.Style = Ui.Style("PrimaryButton");
             b.Click += (_, _) => a(); wrap.Children.Add(b); return b;
         }
-        Act("↶", "Hoàn tác (Ctrl+Z)", Undo);
-        Act("↷", "Làm lại (Ctrl+Y)", Redo);
-        Act("🗑 Xóa hết", "Xóa mọi chú thích (Ctrl+Shift+Z)", ClearAll);
-        Act("⟲", "Xoay trái (Ctrl+L)", () => Rotate(false));
-        Act("⟳", "Xoay phải (Ctrl+R)", () => Rotate(true));
-        Act("↺ Gốc", "Khôi phục ảnh gốc (bỏ cắt, xoay và chú thích)", RestoreOriginal);
+        Act("\uE7A7", "Hoàn tác (Ctrl+Z)", Undo);
+        Act("\uE7A6", "Làm lại (Ctrl+Y)", Redo);
+        Act("\uE74D Xóa hết", "Xóa mọi chú thích (Ctrl+Shift+Z)", ClearAll);
+        Act("\uE7AD Trái", "Xoay trái (Ctrl+L)", () => Rotate(false));
+        Act("\uE7AD Phải", "Xoay phải (Ctrl+R)", () => Rotate(true));
+        Act("\uE72C Gốc", "Khôi phục ảnh gốc (bỏ cắt, xoay và chú thích)", RestoreOriginal);
         Sep();
-        Act("🔤 Copy chữ", "Nhận dạng chữ trong ảnh (OCR) và copy vào clipboard", () => _ = CopyTextAsync());
-        Act("🛡 Che nhạy cảm", "Tự tìm email, số điện thoại, số thẻ trong ảnh và làm mờ", () => _ = RedactAsync());
-        Act("📌 Ghim", "Ghim ảnh này lên màn hình", () => new PinWindow(Render()).Show());
+        Act("\uE8D2 Copy chữ", "Nhận dạng chữ trong ảnh (OCR) và copy vào clipboard", () => _ = CopyTextAsync());
+        Act("\uEA18 Che nhạy cảm", "Tự tìm email, số điện thoại, số thẻ trong ảnh và làm mờ", () => _ = RedactAsync());
+        Act("\uE718 Ghim", "Ghim ảnh này lên màn hình", () => new PinWindow(Render()).Show());
         Sep();
-        Act("📋 Copy", "Copy ảnh (Ctrl+C)", CopyToClipboard);
-        Act("💾 Lưu", "Lưu thành file mới (Ctrl+S)", () => Save(), primary: true);
+        Act("\uE8C8 Copy", "Copy ảnh (Ctrl+C)", CopyToClipboard);
+        Act("\uE74E Lưu", "Lưu thành file mới (Ctrl+S)", () => Save(), primary: true);
         return new Border { Child = wrap, BorderBrush = Ui.Brush("Border"), BorderThickness = new Thickness(0, 0, 0, 1) };
     }
 

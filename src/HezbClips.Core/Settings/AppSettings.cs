@@ -30,7 +30,9 @@ public class AppSettings
     public string HotkeyPinShot { get; set; } = "Ctrl+Shift+P";
     public string HotkeyScroll { get; set; } = "Ctrl+Shift+K";
     public string HotkeyPause { get; set; } = "Ctrl+Shift+E";
-    public bool AutoCopyAfterCapture { get; set; } = false;
+    public bool AutoCopyAfterCapture { get; set; } = true;
+    /// <summary>Settings file format; older files are upgraded on load (see SettingsStore).</summary>
+    public int SchemaVersion { get; set; }
     public int DelaySeconds { get; set; } = 3;
     public int GifFps { get; set; } = 15;
     public int GifWidth { get; set; } = 960;

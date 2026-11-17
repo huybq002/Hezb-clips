@@ -21,7 +21,7 @@ public sealed class LibraryView : DockPanel
     readonly string _thumbCache;
     readonly LibraryMetaStore _meta;
     readonly TextBox _search = new() { Width = 200, Margin = new Thickness(6, 0, 0, 0), ToolTip = "Tìm theo tên file hoặc #thẻ" };
-    readonly TextBlock _searchHint = new() { Text = "🔍 Tìm tên hoặc #thẻ", Foreground = Ui.Brush("Disabled"), FontSize = 13, IsHitTestVisible = false, Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left };
+    readonly TextBlock _searchHint = new() { Text = "Tìm tên hoặc #thẻ", Foreground = Ui.Brush("Disabled"), FontSize = 13, IsHitTestVisible = false, Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left };
     bool _starOnly;
     readonly string? _ffmpeg;
     readonly Action<string>? _edit, _pin;
@@ -45,21 +45,21 @@ public sealed class LibraryView : DockPanel
 
         var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
         var right = new StackPanel { Orientation = Orientation.Horizontal };
-        var openDir = new Button { Content = "📂 Mở thư mục", Margin = new Thickness(8, 0, 0, 0) };
+        var openDir = new Button { Content = Ui.Content("\uE838 Mở thư mục"), Margin = new Thickness(8, 0, 0, 0) };
         openDir.Click += (_, _) => { Directory.CreateDirectory(_dir); Process.Start("explorer.exe", $"\"{_dir}\""); };
-        var refresh = new Button { Content = "⟳", Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(10, 6, 10, 6), ToolTip = "Làm mới (F5)" };
+        var refresh = new Button { Content = Ui.Glyph("\uE72C"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(10, 6, 10, 6), ToolTip = "Làm mới (F5)" };
         refresh.Click += (_, _) => { _grid.Tag = null; Reload(); };
         right.Children.Add(_summary); right.Children.Add(openDir); right.Children.Add(refresh);
         DockPanel.SetDock(right, Dock.Right);
         var chips = new StackPanel { Orientation = Orientation.Horizontal };
         void Chip(string text, MediaKind? kind)
         {
-            var c = new ToggleButton { Content = text, Margin = new Thickness(0, 0, 6, 0), IsChecked = kind is null };
+            var c = new ToggleButton { Content = Ui.Content(text), Margin = new Thickness(0, 0, 6, 0), IsChecked = kind is null };
             c.Click += (_, _) => { _filter = kind; foreach (var o in _chips) o.IsChecked = o == c; Reload(); };
             _chips.Add(c); chips.Children.Add(c);
         }
-        Chip("Tất cả", null); Chip("🖼 Ảnh", MediaKind.Image); Chip("🎞 Video", MediaKind.Video); Chip("GIF", MediaKind.Gif);
-        var starChip = new ToggleButton { Content = "★ Gắn sao", Margin = new Thickness(0, 0, 6, 0), ToolTip = "Chỉ hiện file đã gắn sao" };
+        Chip("Tất cả", null); Chip("\uE91B Ảnh", MediaKind.Image); Chip("\uE714 Video", MediaKind.Video); Chip("GIF", MediaKind.Gif);
+        var starChip = new ToggleButton { Content = Ui.Content("\uE734 Gắn sao"), Margin = new Thickness(0, 0, 6, 0), ToolTip = "Chỉ hiện file đã gắn sao" };
         starChip.Click += (_, _) => { _starOnly = starChip.IsChecked == true; Reload(); };
         chips.Children.Add(starChip);
         var searchBox = new Grid(); searchBox.Children.Add(_search); searchBox.Children.Add(_searchHint);
@@ -110,43 +110,42 @@ public sealed class LibraryView : DockPanel
             thumbBox.Children.Add(new Border
             {
                 Background = new SolidColorBrush(Color.FromArgb(210, 27, 28, 34)), CornerRadius = new CornerRadius(5), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(8),
-                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, IsHitTestVisible = false,
                 Child = new TextBlock { Text = badge, Foreground = Brushes.White, FontSize = 10, FontWeight = FontWeights.Bold },
             });
-        var star = new Button
-        {
-            Content = _meta.IsStarred(item.Path) ? "★" : "☆", FontSize = 16, Width = 30, Height = 30, Padding = new Thickness(0), Margin = new Thickness(6),
-            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, ToolTip = "Gắn / bỏ sao",
-            Background = new SolidColorBrush(Color.FromArgb(190, 27, 28, 34)), BorderBrush = Brushes.Transparent,
-            Foreground = _meta.IsStarred(item.Path) ? new SolidColorBrush(Color.FromRgb(255, 214, 10)) : Brushes.White,
-        };
+
+        // top-left: star toggle · top-right: "⋯" menu with the less common actions
+        var starred = _meta.IsStarred(item.Path);
+        var star = OverlayButton(starred ? "\uE735" : "\uE734", starred ? "Bỏ sao" : "Gắn sao", HorizontalAlignment.Left);
+        if (starred) star.Foreground = new SolidColorBrush(Color.FromRgb(255, 214, 10));
         star.Click += (_, e) => { _meta.ToggleStar(item.Path); _grid.Tag = null; Reload(); e.Handled = true; };
-        star.MouseLeftButtonUp += (_, e) => e.Handled = true;
-        thumbBox.Children.Add(star);
+        var more = OverlayButton("\uE712", "Thêm thao tác", HorizontalAlignment.Right);
+        var menu = new ContextMenu();
+        void M(string text, Action act) { var mi = new MenuItem { Header = Ui.Content(text) }; mi.Click += (_, _) => act(); menu.Items.Add(mi); }
+        if (item.Kind != MediaKind.Video && _pin is not null) M("\uE718 Ghim lên màn hình", () => _pin(item.Path));
+        M("\uE8EC Gắn thẻ…", () => EditTags(item));
+        M("\uE71B Copy đường dẫn", () => { try { Clipboard.SetText(item.Path); } catch (Exception) { } });
+        more.Click += (_, e) => { menu.PlacementTarget = more; menu.Placement = PlacementMode.Bottom; menu.IsOpen = true; e.Handled = true; };
+        thumbBox.Children.Add(star); thumbBox.Children.Add(more);
         thumbBox.Clip = new RectangleGeometry(new Rect(0, 0, 204, 140), 8, 8);
 
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-        void A(string t, string tip, Action a)
+        // five main actions as icons, spread evenly under the card
+        var list = new List<(string Glyph, string Tip, Action Act)>
         {
-            var b = new Button { Content = t, ToolTip = tip, Margin = new Thickness(0, 0, 4, 0), Padding = new Thickness(8, 3, 8, 3), FontSize = 12 };
-            b.Click += (_, e) => { a(); e.Handled = true; };
-            b.MouseLeftButtonUp += (_, e) => e.Handled = true; // do not trigger card open
-            actions.Children.Add(b);
+            ("\uE8E5", "Mở file", () => Open(item.Path)),
+            ("\uE838", "Hiện trong thư mục", () => Process.Start("explorer.exe", $"/select,\"{item.Path}\"")),
+            ("\uE8C8", "Copy", () => CopyItem(item)),
+        };
+        if (item.Kind == MediaKind.Image && _edit is not null) list.Add(("\uE70F", "Chỉnh sửa", () => _edit(item.Path)));
+        list.Add(("\uE74D", "Xóa (vào thùng rác)", () => Delete(item)));
+        var actions = new System.Windows.Controls.Primitives.UniformGrid { Rows = 1, Columns = list.Count, Margin = new Thickness(0, 8, 0, 0) };
+        foreach (var (glyph, tip, act) in list)
+        {
+            var btn = new Button { Content = Ui.Glyph(glyph, 15), ToolTip = tip, Margin = new Thickness(2, 0, 2, 0), Padding = new Thickness(0, 6, 0, 6) };
+            btn.Click += (_, e) => { act(); e.Handled = true; };
+            btn.MouseLeftButtonUp += (_, e) => e.Handled = true; // do not trigger card open
+            actions.Children.Add(btn);
         }
-        A("Mở", "Mở file", () => Open(item.Path));
-        A("📂", "Hiện trong thư mục", () => Process.Start("explorer.exe", $"/select,\"{item.Path}\""));
-        A("📋", "Copy", () => CopyItem(item));
-        if (item.Kind == MediaKind.Image && _edit is not null) A("✏", "Chỉnh sửa", () => _edit(item.Path));
-        if (item.Kind != MediaKind.Video && _pin is not null) A("📌", "Ghim lên màn hình", () => _pin(item.Path));
-        A("🏷", "Gắn thẻ", () =>
-        {
-            var current = string.Join(", ", _meta.Get(item.Path).Tags);
-            var text = PromptWindow.Ask(Window.GetWindow(this), "Gắn thẻ", "Các thẻ cách nhau bằng dấu phẩy, ví dụ: lỗi, thiết kế, khách hàng", current);
-            if (text is null) return;
-            _meta.SetTags(item.Path, LibraryMetaStore.ParseTags(text));
-            _grid.Tag = null; Reload();
-        });
-        A("🗑", "Xóa (vào thùng rác)", () => Delete(item));
 
         var col = new StackPanel();
         col.Children.Add(thumbBox);
@@ -179,6 +178,27 @@ public sealed class LibraryView : DockPanel
 
         if (item.Kind != MediaKind.Gif) _ = LoadThumb(item, img, version);
         return card;
+    }
+
+    static Button OverlayButton(string glyph, string tip, HorizontalAlignment align)
+    {
+        var b = new Button
+        {
+            Content = Ui.Glyph(glyph, 14), Width = 30, Height = 30, Padding = new Thickness(0), Margin = new Thickness(6), ToolTip = tip,
+            HorizontalAlignment = align, VerticalAlignment = VerticalAlignment.Top,
+            Background = new SolidColorBrush(Color.FromArgb(190, 27, 28, 34)), BorderBrush = Brushes.Transparent, Foreground = Brushes.White,
+        };
+        b.MouseLeftButtonUp += (_, e) => e.Handled = true;
+        return b;
+    }
+
+    void EditTags(MediaItem item)
+    {
+        var current = string.Join(", ", _meta.Get(item.Path).Tags);
+        var text = PromptWindow.Ask(Window.GetWindow(this), "Gắn thẻ", "Các thẻ cách nhau bằng dấu phẩy, ví dụ: lỗi, thiết kế, khách hàng", current);
+        if (text is null) return;
+        _meta.SetTags(item.Path, LibraryMetaStore.ParseTags(text));
+        _grid.Tag = null; Reload();
     }
 
     async Task LoadThumb(MediaItem item, Image img, int version)

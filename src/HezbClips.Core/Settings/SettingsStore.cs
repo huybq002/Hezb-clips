@@ -10,14 +10,24 @@ public class SettingsStore(string path)
     {
         try
         {
-            if (!File.Exists(path)) return new AppSettings();
+            if (!File.Exists(path)) return Migrate(new AppSettings());
             var s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings();
             if (!Enum.IsDefined(s.Quality)) s.Quality = ExportQuality.P1080;
             if (!Enum.IsDefined(s.VideoQuality)) s.VideoQuality = ExportQuality.P1080;
-            return s;
+            return Migrate(s);
         }
-        catch (JsonException) { return new AppSettings(); }
-        catch (IOException) { return new AppSettings(); }
+        catch (JsonException) { return Migrate(new AppSettings()); }
+        catch (IOException) { return Migrate(new AppSettings()); }
+    }
+
+    public const int CurrentSchema = 2;
+
+    /// <summary>v2: copying to the clipboard after every capture became the default.</summary>
+    static AppSettings Migrate(AppSettings s)
+    {
+        if (s.SchemaVersion < 2) s.AutoCopyAfterCapture = true;
+        s.SchemaVersion = CurrentSchema;
+        return s;
     }
 
     public void Save(AppSettings s)

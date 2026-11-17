@@ -96,16 +96,16 @@ public sealed class SettingsView : Grid
         var nav = new StackPanel { Margin = new Thickness(0, 0, 14, 0) };
         void Section(string icon, string name, Func<UIElement> build)
         {
-            var b = new ToggleButton { Content = new TextBlock { Text = $"{icon}  {name}" }, HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 6), Padding = new Thickness(14, 9, 14, 9), Style = Ui.Style("NavButton") };
+            var b = new ToggleButton { Content = Ui.Content($"{icon} {name}"), HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 6), Padding = new Thickness(14, 9, 14, 9), Style = Ui.Style("NavButton") };
             b.Click += (_, _) => ShowSection(name);
             _sections.Add((name, b, build)); nav.Children.Add(b);
         }
-        Section("🎨", "Giao diện", BuildAppearance);
-        Section("🖼", "Ảnh", BuildImage);
-        Section("🎞", "Video & âm thanh", BuildVideo);
-        Section("⌨", "Phím tắt", BuildShortcuts);
-        Section("💾", "Lưu trữ", BuildStorage);
-        if (extraPage is not null) Section("🛠", "Nâng cao", () => extraPage(_s));
+        Section("\uE790", "Giao diện", BuildAppearance);
+        Section("\uE91B", "Ảnh", BuildImage);
+        Section("\uE714", "Video & âm thanh", BuildVideo);
+        Section("\uE765", "Phím tắt", BuildShortcuts);
+        Section("\uE8B7", "Lưu trữ", BuildStorage);
+        if (extraPage is not null) Section("\uE90F", "Nâng cao", () => extraPage(_s));
         SetColumn(nav, 0); Children.Add(nav);
 
         var right = new DockPanel();

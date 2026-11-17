@@ -33,14 +33,14 @@ public sealed class PostCapturePopup : Window
         _note.Text = note ?? ""; _note.Visibility = string.IsNullOrEmpty(note) ? Visibility.Collapsed : Visibility.Visible;
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        Button B(string t, Action a) { var b = new Button { Content = t, Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(10, 5, 10, 5) }; b.Click += (_, _) => a(); buttons.Children.Add(b); return b; }
-        var copyBtn = B("📋 Copy", () => { });
+        Button B(string t, Action a) { var b = new Button { Content = Ui.Content(t), Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(10, 5, 10, 5) }; b.Click += (_, _) => a(); buttons.Children.Add(b); return b; }
+        var copyBtn = B("\uE8C8 Copy", () => { });
         copyBtn.Style = Ui.Style("PrimaryButton");
         copyBtn.Click += (_, _) => { if (Copy()) FlashCopied(copyBtn); };
-        B("📂 Mở thư mục", () => Process.Start("explorer.exe", $"/select,\"{_path}\""));
-        B("🗑 Xóa", () => { try { File.Delete(_path); } catch (IOException) { } Close(); });
-        if (!isVideo && edit is not null && Path.GetExtension(path).ToLowerInvariant() != ".gif") B("✏ Sửa", () => { edit(_path); Close(); });
-        if (isVideo) B("✂ Cắt", () => _trimPanel.Visibility = Visibility.Visible);
+        B("\uE838 Mở thư mục", () => Process.Start("explorer.exe", $"/select,\"{_path}\""));
+        B("\uE74D Xóa", () => { try { File.Delete(_path); } catch (IOException) { } Close(); });
+        if (!isVideo && edit is not null && Path.GetExtension(path).ToLowerInvariant() != ".gif") B("\uE70F Sửa", () => { edit(_path); Close(); });
+        if (isVideo) B("\uE7A8 Cắt", () => _trimPanel.Visibility = Visibility.Visible);
 
         var apply = new Button { Content = "Cắt ngay", Padding = new Thickness(10, 5, 10, 5), Style = Ui.Style("PrimaryButton") };
         apply.Click += (_, _) =>
@@ -96,7 +96,7 @@ public sealed class PostCapturePopup : Window
     {
         var accent = ((SolidColorBrush)Ui.Brush("Accent")).Color;
         var brush = new SolidColorBrush(Color.FromRgb(46, 160, 67));
-        b.Background = brush; b.Content = "✓ Đã copy";
+        b.Background = brush; b.Content = Ui.Content("\uE73E Đã copy");
         b.RenderTransformOrigin = new Point(0.5, 0.5);
         var st = new ScaleTransform(1, 1); b.RenderTransform = st;
         var pulse = new System.Windows.Media.Animation.DoubleAnimation(1, 1.12, TimeSpan.FromMilliseconds(120)) { AutoReverse = true };
@@ -104,7 +104,7 @@ public sealed class PostCapturePopup : Window
         var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1600) };
         t.Tick += (_, _) =>
         {
-            t.Stop(); b.Content = "📋 Copy";
+            t.Stop(); b.Content = Ui.Content("\uE8C8 Copy");
             brush.BeginAnimation(SolidColorBrush.ColorProperty, new System.Windows.Media.Animation.ColorAnimation(accent, TimeSpan.FromMilliseconds(250)));
         };
         t.Start();

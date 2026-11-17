@@ -54,7 +54,7 @@ public static class Toast
             AllowsTransparency = true, Background = Brushes.Transparent, SizeToContent = SizeToContent.WidthAndHeight,
             Content = Ui.Card(label, 14), Focusable = false,
         };
-        w.SourceInitialized += (_, _) => WinNative.ClickThrough(w);
+        w.SourceInitialized += (_, _) => { WinNative.ClickThrough(w); WinNative.ExcludeFromCapture(w); };
         w.Loaded += (_, _) =>
         {
             var wa = SystemParameters.WorkArea;

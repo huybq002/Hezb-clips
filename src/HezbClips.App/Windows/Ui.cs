@@ -36,6 +36,30 @@ public static class Ui
     public static GifPlayer AnimatedGif(string path, double height, int decodeWidth = 220, int maxFrames = 75) =>
         new(path, decodeWidth, maxFrames) { Height = height, Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
 
+    /// <summary>Windows icon font (Win11 Fluent, falls back to Win10 MDL2). Glyphs live in the private-use area U+E000–U+F8FF.</summary>
+    public const string IconFontName = "Segoe Fluent Icons, Segoe MDL2 Assets";
+    static bool IsGlyph(char c) => c >= '' && c <= '';
+
+    /// <summary>A single icon glyph (or plain text when it is not a glyph).</summary>
+    public static TextBlock Glyph(string s, double size = 14)
+    {
+        var t = new TextBlock { Text = s, FontSize = size, VerticalAlignment = VerticalAlignment.Center };
+        if (s.Length > 0 && IsGlyph(s[0])) t.FontFamily = new FontFamily(IconFontName);
+        return t;
+    }
+
+    /// <summary>" Ghim" becomes icon + label; plain strings stay strings.</summary>
+    public static object Content(string s, double iconSize = 14)
+    {
+        if (s.Length == 0 || !IsGlyph(s[0])) return s;
+        var rest = s[1..].Trim();
+        if (rest.Length == 0) return Glyph(s, iconSize);
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        sp.Children.Add(Glyph(s[0].ToString(), iconSize));
+        sp.Children.Add(new TextBlock { Text = rest, Margin = new Thickness(7, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+        return sp;
+    }
+
     public static Style Style(string key) => (Style)Application.Current.FindResource(key);
 
     /// <summary>Rounded dark card with soft shadow. Host window must set AllowsTransparency + transparent background.</summary>

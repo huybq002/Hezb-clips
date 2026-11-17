@@ -21,7 +21,7 @@ public sealed class TrayHost : IDisposable
         menu.Items.Add("Cài đặt", null, (_, _) => settings());
         menu.Items.Add("Thoát", null, (_, _) => exit());
         _icon = new NotifyIcon { Icon = LoadIcon(), Text = "Hezb Clips", ContextMenuStrip = menu, Visible = true };
-        _icon.DoubleClick += (_, _) => library();
+        _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) library(); };
         _icon.BalloonTipClicked += (_, _) => _balloonClick?.Invoke();
     }
 

@@ -14,7 +14,8 @@ public class ScreenshotService(ICaptureSource src, IImageUpscaler ai, AppSetting
     public Task<string> TakeScreenAsync(int monitorIndex) => SaveAsync(src.CaptureScreen(monitorIndex));
     public Task<string> TakeWindowAsync(IntPtr hwnd) => SaveAsync(src.CaptureWindow(hwnd));
 
-    async Task<string> SaveAsync(Image<Rgba32> shot)
+    /// <summary>Scale to the export quality and save. Takes ownership of the image.</summary>
+    public async Task<string> SaveAsync(Image<Rgba32> shot)
     {
         using (shot)
         {

@@ -27,19 +27,19 @@ public sealed class RecordControlBar : Window
     static readonly int[] GifFpsValues = { 10, 15, 20, 30 };
     static readonly int[] GifWidthValues = { 480, 720, 960, 0 };
 
-    readonly ToggleButton _sys = new() { Content = "🔊 Âm thanh máy", Margin = new Thickness(0, 0, 6, 0) };
-    readonly ToggleButton _mic = new() { Content = "🎤 Mic", Margin = new Thickness(0, 0, 6, 0) };
+    readonly ToggleButton _sys = new() { Content = Ui.Content("\uE767 Âm thanh máy"), Margin = new Thickness(0, 0, 6, 0) };
+    readonly ToggleButton _mic = new() { Content = Ui.Content("\uE720 Mic"), Margin = new Thickness(0, 0, 6, 0) };
     readonly ToggleButton _gif = new() { Content = "GIF ≤60s", Margin = new Thickness(0, 0, 10, 0), ToolTip = "Quay thành ảnh GIF, tối đa 60 giây, không có âm thanh" };
     readonly ComboBox _quality = new() { Margin = new Thickness(0, 0, 10, 0), Width = 76 };
     readonly ComboBox _gifFps = new() { Margin = new Thickness(0, 0, 6, 0), Width = 74, Visibility = Visibility.Collapsed, ToolTip = "Số khung hình/giây của GIF" };
     readonly ComboBox _gifWidth = new() { Margin = new Thickness(0, 0, 10, 0), Width = 92, Visibility = Visibility.Collapsed, ToolTip = "Chiều rộng tối đa của GIF" };
-    readonly ToggleButton _clicks = new() { Content = "🖱 Click", Margin = new Thickness(0, 0, 6, 0), ToolTip = "Hiện vòng tròn khi bấm chuột trong video" };
-    readonly ToggleButton _keys = new() { Content = "⌨ Phím", Margin = new Thickness(0, 0, 6, 0), ToolTip = "Hiện phím bấm trong video" };
-    readonly ToggleButton _cam = new() { Content = "📷 Webcam", ToolTip = "Hiện webcam ở góc vùng quay" };
+    readonly ToggleButton _clicks = new() { Content = "Click", Margin = new Thickness(0, 0, 6, 0), ToolTip = "Hiện vòng tròn khi bấm chuột trong video" };
+    readonly ToggleButton _keys = new() { Content = Ui.Content("\uE765 Phím"), Margin = new Thickness(0, 0, 6, 0), ToolTip = "Hiện phím bấm trong video" };
+    readonly ToggleButton _cam = new() { Content = Ui.Content("\uE8B8 Webcam"), ToolTip = "Hiện webcam ở góc vùng quay" };
     readonly System.Windows.Shapes.Ellipse _dot = new() { Width = 9, Height = 9, Fill = Ui.Brush("Disabled"), VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock _timer = new() { Text = "00:00", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0), FontFamily = new FontFamily("Consolas"), FontSize = 15, Foreground = Ui.Brush("Text") };
-    readonly Button _go = new() { Content = "⏺ Quay", Padding = new Thickness(16, 6, 16, 6), Style = Ui.Style("DangerButton") };
-    readonly Button _pause = new() { Content = "⏸ Tạm dừng", Margin = new Thickness(6, 0, 0, 0), Visibility = Visibility.Collapsed };
+    readonly Button _go = new() { Content = Ui.Content("\uE7C8 Quay"), Padding = new Thickness(16, 6, 16, 6), Style = Ui.Style("DangerButton") };
+    readonly Button _pause = new() { Content = Ui.Content("\uE769 Tạm dừng"), Margin = new Thickness(6, 0, 0, 0), Visibility = Visibility.Collapsed };
     readonly Button _cancel = new() { Content = "Hủy", Margin = new Thickness(6, 0, 0, 0) };
     readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(250) };
     readonly Stopwatch _sw = new();
@@ -107,7 +107,7 @@ public sealed class RecordControlBar : Window
         if (!_recording || _paused == paused) return;
         _paused = paused;
         if (paused) _sw.Stop(); else _sw.Start();
-        _pause.Content = paused ? "▶ Tiếp tục" : "⏸ Tạm dừng";
+        _pause.Content = Ui.Content(paused ? "\uE768 Tiếp tục" : "\uE769 Tạm dừng");
         _dot.Fill = Ui.Brush(paused ? "Disabled" : "Danger");
     }
 
@@ -121,7 +121,7 @@ public sealed class RecordControlBar : Window
             _clicks.IsChecked == true, _keys.IsChecked == true, _cam.IsChecked == true);
         _recording = true; _sw.Restart(); _tick.Start();
         foreach (var c in new Control[] { _sys, _mic, _quality, _gif, _gifFps, _gifWidth, _clicks, _keys, _cam, _cancel }) c.IsEnabled = false;
-        _go.Content = "⏹ Dừng"; _dot.Fill = Ui.Brush("Danger"); _pause.Visibility = Visibility.Visible;
+        _go.Content = Ui.Content("\uE71A Dừng"); _dot.Fill = Ui.Brush("Danger"); _pause.Visibility = Visibility.Visible;
         Dispatcher.BeginInvoke(PlaceNearRegion, DispatcherPriority.Loaded);
         RecordClicked?.Invoke(choices);
     }
