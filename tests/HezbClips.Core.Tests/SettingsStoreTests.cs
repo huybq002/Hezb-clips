@@ -41,9 +41,24 @@ public class SettingsMigrationTests
 
     [Fact] public void Current_file_keeps_user_choice()
     {
-        var p = Path.GetTempFileName(); File.WriteAllText(p, "{\"AutoCopyAfterCapture\":false,\"SchemaVersion\":2}");
+        var p = Path.GetTempFileName(); File.WriteAllText(p, "{\"AutoCopyAfterCapture\":false,\"SchemaVersion\":3}");
         Assert.False(new SettingsStore(p).Load().AutoCopyAfterCapture);
     }
 
     [Fact] public void Missing_file_defaults_on() => Assert.True(new SettingsStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json")).Load().AutoCopyAfterCapture);
+}
+
+public class HotkeyMigrationTests
+{
+    [Fact] public void Old_default_hotkeys_move_to_ctrl_alt_but_custom_ones_stay()
+    {
+        var p = Path.GetTempFileName();
+        File.WriteAllText(p, "{\"HotkeyRegionShot\":\"Ctrl+Shift+S\",\"HotkeyRecord\":\"Alt+F9\",\"SchemaVersion\":2}");
+        var s = new SettingsStore(p).Load();
+        Assert.Equal("Ctrl+Alt+S", s.HotkeyRegionShot);
+        Assert.Equal("Alt+F9", s.HotkeyRecord);
+        Assert.Equal("Ctrl+Alt+W", s.HotkeyWindowShot); // missing in file: new default
+    }
+
+    [Fact] public void New_defaults_are_ctrl_alt() => Assert.StartsWith("Ctrl+Alt+", new AppSettings().HotkeyRegionShot);
 }

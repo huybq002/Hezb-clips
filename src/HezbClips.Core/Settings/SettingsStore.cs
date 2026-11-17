@@ -21,12 +21,23 @@ public class SettingsStore(string path)
         catch (UnauthorizedAccessException) { return Migrate(new AppSettings()); }
     }
 
-    public const int CurrentSchema = 2;
+    public const int CurrentSchema = 3;
 
-    /// <summary>v2: copying to the clipboard after every capture became the default.</summary>
+    /// <summary>v2: copying to the clipboard after every capture became the default.
+    /// v3: default hotkeys moved from Ctrl+Shift+X (clashes with browsers/editors) to Ctrl+Alt+X;
+    /// only hotkeys the user never changed are moved.</summary>
     static AppSettings Migrate(AppSettings s)
     {
         if (s.SchemaVersion < 2) s.AutoCopyAfterCapture = true;
+        if (s.SchemaVersion < 3)
+        {
+            static string Move(string v, char key) => string.Equals(v?.Replace(" ", ""), "Ctrl+Shift+" + key, StringComparison.OrdinalIgnoreCase) ? "Ctrl+Alt+" + key : v!;
+            s.HotkeyRegionShot = Move(s.HotkeyRegionShot, 'S'); s.HotkeyFullShot = Move(s.HotkeyFullShot, 'F');
+            s.HotkeyRecord = Move(s.HotkeyRecord, 'R'); s.HotkeyGif = Move(s.HotkeyGif, 'G'); s.HotkeyLibrary = Move(s.HotkeyLibrary, 'L');
+            s.HotkeyCopyRegion = Move(s.HotkeyCopyRegion, 'C'); s.HotkeyWindowShot = Move(s.HotkeyWindowShot, 'W');
+            s.HotkeyDelayShot = Move(s.HotkeyDelayShot, 'T'); s.HotkeyPinShot = Move(s.HotkeyPinShot, 'P');
+            s.HotkeyScroll = Move(s.HotkeyScroll, 'K'); s.HotkeyPause = Move(s.HotkeyPause, 'E');
+        }
         s.SchemaVersion = CurrentSchema;
         return s;
     }

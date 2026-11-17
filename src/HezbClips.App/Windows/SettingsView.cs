@@ -207,7 +207,7 @@ public sealed class SettingsView : Grid
 
     UIElement BuildShortcuts()
     {
-        var p = Page("Phím tắt", "Phím tắt toàn cục hoạt động ở mọi nơi. Định dạng: Ctrl+Shift+S, Alt+F1, ...");
+        var p = Page("Phím tắt", "Phím tắt toàn cục hoạt động ở mọi nơi. Định dạng: Ctrl+Alt+S, Alt+F1, ...");
         foreach (var h in Hk) Field(p, h.Label, _hotkeys[h.Name]);
 
         p.Children.Add(new TextBlock { Text = "Công cụ trình chỉnh sửa ảnh", FontSize = 15, FontWeight = FontWeights.Bold, Foreground = Ui.Brush("Text"), Margin = new Thickness(0, 24, 0, 0) });
@@ -291,7 +291,7 @@ public sealed class SettingsView : Grid
         foreach (var h in Hk)
         {
             try { HotkeyParser.Parse(_hotkeys[h.Name].Text); }
-            catch (FormatException) { _error.Text = $"Phím tắt '{h.Label}' không hợp lệ (ví dụ: Ctrl+Shift+S)."; ShowSection("Phím tắt"); return false; }
+            catch (FormatException) { _error.Text = $"Phím tắt '{h.Label}' không hợp lệ (ví dụ: Ctrl+Alt+S)."; ShowSection("Phím tắt"); return false; }
         }
         var combos = Hk.Select(h => _hotkeys[h.Name].Text.Trim().ToUpperInvariant().Replace(" ", "")).ToList();
         if (combos.Distinct().Count() != combos.Count) { _error.Text = "Hai phím tắt toàn cục đang trùng nhau."; ShowSection("Phím tắt"); return false; }

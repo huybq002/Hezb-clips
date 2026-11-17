@@ -18,18 +18,18 @@ public class AppSettings
     public int Fps { get; set; } = 30;
     public string OutputDir { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Videos", "HezbClips");
-    public string HotkeyRegionShot { get; set; } = "Ctrl+Shift+S";
-    public string HotkeyFullShot { get; set; } = "Ctrl+Shift+F";
-    public string HotkeyRecord { get; set; } = "Ctrl+Shift+R";
-    public string HotkeyGif { get; set; } = "Ctrl+Shift+G";
-    public string HotkeyLibrary { get; set; } = "Ctrl+Shift+L";
+    public string HotkeyRegionShot { get; set; } = "Ctrl+Alt+S";
+    public string HotkeyFullShot { get; set; } = "Ctrl+Alt+F";
+    public string HotkeyRecord { get; set; } = "Ctrl+Alt+R";
+    public string HotkeyGif { get; set; } = "Ctrl+Alt+G";
+    public string HotkeyLibrary { get; set; } = "Ctrl+Alt+L";
     public Dictionary<string, string> EditorKeys { get; set; } = new(EditorShortcuts.Defaults);
-    public string HotkeyCopyRegion { get; set; } = "Ctrl+Shift+C";
-    public string HotkeyWindowShot { get; set; } = "Ctrl+Shift+W";
-    public string HotkeyDelayShot { get; set; } = "Ctrl+Shift+T";
-    public string HotkeyPinShot { get; set; } = "Ctrl+Shift+P";
-    public string HotkeyScroll { get; set; } = "Ctrl+Shift+K";
-    public string HotkeyPause { get; set; } = "Ctrl+Shift+E";
+    public string HotkeyCopyRegion { get; set; } = "Ctrl+Alt+C";
+    public string HotkeyWindowShot { get; set; } = "Ctrl+Alt+W";
+    public string HotkeyDelayShot { get; set; } = "Ctrl+Alt+T";
+    public string HotkeyPinShot { get; set; } = "Ctrl+Alt+P";
+    public string HotkeyScroll { get; set; } = "Ctrl+Alt+K";
+    public string HotkeyPause { get; set; } = "Ctrl+Alt+E";
     public bool AutoCopyAfterCapture { get; set; } = true;
     /// <summary>Settings file format; older files are upgraded on load (see SettingsStore).</summary>
     public int SchemaVersion { get; set; }
