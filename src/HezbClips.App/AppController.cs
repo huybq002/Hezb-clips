@@ -52,6 +52,7 @@ public sealed class AppController : IDisposable
     public void Start(bool showMain = true)
     {
         ThemeManager.Apply(_s.Theme);
+        ForegroundTracker.Start();
         _tray = new TrayHost(new (string, Action)[]
         {
             ("Chụp vùng", () => _ = RegionShotAsync()), ("Chụp toàn màn hình", () => _ = FullShotAsync()),
@@ -76,16 +77,22 @@ public sealed class AppController : IDisposable
         if (showMain) OpenLibrary();
     }
 
+    /// <summary>Second launch of the app, or the tray: bring up the main window.</summary>
+    public void ShowMain() => OpenLibrary();
+
+    /// <summary>Last-resort handler for exceptions nobody caught (logged, shown, app keeps running).</summary>
+    public void ReportUnhandled(Exception ex) => Report("Lỗi không mong muốn", ex);
+
     void Report(string title, Exception ex)
     {
         try { Directory.CreateDirectory(_dataDir); File.AppendAllText(Path.Combine(_dataDir, "log.txt"), $"{DateTime.Now:s} {title}: {ex}{Environment.NewLine}"); }
-        catch (IOException) { }
+        catch (Exception) { }
         _tray?.Balloon(title, ex.Message);
     }
 
     // ---- hotkeys ----
 
-    void RegisterHotkeys()
+    void RegisterHotkeys(bool withPause = false)
     {
         _hotkeys!.UnregisterAll();
         _failures = _hotkeys.RegisterAll(new Dictionary<string, string>
@@ -93,8 +100,9 @@ public sealed class AppController : IDisposable
             ["RegionShot"] = _s.HotkeyRegionShot, ["FullShot"] = _s.HotkeyFullShot, ["Record"] = _s.HotkeyRecord,
             ["Gif"] = _s.HotkeyGif, ["Library"] = _s.HotkeyLibrary,
             ["CopyRegion"] = _s.HotkeyCopyRegion, ["WindowShot"] = _s.HotkeyWindowShot, ["DelayShot"] = _s.HotkeyDelayShot,
-            ["PinShot"] = _s.HotkeyPinShot, ["Scroll"] = _s.HotkeyScroll, ["Pause"] = _s.HotkeyPause,
-        });
+            ["PinShot"] = _s.HotkeyPinShot, ["Scroll"] = _s.HotkeyScroll,
+        }.Concat(withPause ? new[] { KeyValuePair.Create("Pause", _s.HotkeyPause) } : Array.Empty<KeyValuePair<string, string>>())
+         .ToDictionary(kv => kv.Key, kv => kv.Value));
     }
 
     void OnHotkey(int id)
@@ -280,7 +288,7 @@ public sealed class AppController : IDisposable
 
     void RestoreMain()
     {
-        if (!_restoreMain) return;
+        if (!_restoreMain || _bar is not null) return; // a pending record bar keeps the main window out of the region
         _restoreMain = false;
         if (_main is not null) { _main.Show(); _main.RefreshLibrary(); }
     }
@@ -293,9 +301,7 @@ public sealed class AppController : IDisposable
         if (mode == ShotMode.CopyOnly) return;
         if (mode == ShotMode.Pin)
         {
-            using var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero);
-            var k = g.DpiX / 96.0;
-            try { PinWindow.FromFile(path, new Point(region.X / k - 8, region.Y / k - 8)).Show(); }
+            try { PinWindow.FromFile(path, new System.Drawing.Point(region.X - 8, region.Y - 8)).Show(); }
             catch (Exception ex) { Report("Không ghim được ảnh", ex); }
             return;
         }
@@ -304,16 +310,23 @@ public sealed class AppController : IDisposable
 
     static bool CopyImage(string path)
     {
+        System.Windows.Media.Imaging.BitmapSource? bmp = null;
+        try
+        {
+            var b = new System.Windows.Media.Imaging.BitmapImage();
+            b.BeginInit(); b.UriSource = new Uri(path); b.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; b.EndInit(); b.Freeze();
+            bmp = b;
+        }
+        catch (Exception)
+        {
+            // WebP and other formats WPF cannot decode: go through ImageSharp
+            try { using var img = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(path); bmp = ToBitmap(img); }
+            catch (Exception) { return false; }
+        }
         for (int i = 0; i < 3; i++)
         {
-            try
-            {
-                var bmp = new System.Windows.Media.Imaging.BitmapImage();
-                bmp.BeginInit(); bmp.UriSource = new Uri(path); bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; bmp.EndInit(); bmp.Freeze();
-                Clipboard.SetImage(bmp);
-                return true;
-            }
-            catch (Exception) { System.Threading.Thread.Sleep(80); } // clipboard busy or format not decodable (WebP)
+            try { Clipboard.SetImage(bmp); return true; }
+            catch (Exception) { System.Threading.Thread.Sleep(50); } // clipboard held by another app
         }
         return false;
     }
@@ -340,17 +353,30 @@ public sealed class AppController : IDisposable
         var barShown = false;
         try
         {
-            var region = await RegionSelector.SelectAsync();
-            if (region is null) return;
+            var picked = await RegionSelector.SelectAsync();
+            if (picked is null) return;
+            // the frame source captures one screen: record only the part on that screen, with even sizes for the encoder
+            var mon = System.Windows.Forms.Screen.FromRectangle(picked.Value).Bounds;
+            var rec = System.Drawing.Rectangle.Intersect(picked.Value, mon);
+            rec = new System.Drawing.Rectangle(rec.X, rec.Y, rec.Width & ~1, rec.Height & ~1);
+            if (rec.Width < 16 || rec.Height < 16) return;
             // grey out everything outside the chosen region and outline it, until the recording ends
-            _focus = RegionFocusOverlay.Show(region.Value);
-            var bar = new RecordControlBar(region.Value, _s);
+            _focus = RegionFocusOverlay.Show(rec);
+            var bar = new RecordControlBar(rec, _s);
             _bar = bar;
             if (gif) bar.PresetGif();
-            bar.RecordClicked += c => StartRecording(region.Value, c);
+            bar.RecordClicked += c => StartRecording(rec, c);
             bar.StopClicked += () => _ = StopRecordingAsync();
             bar.PauseToggled += p => ApplyPause(p);
-            bar.Cancelled += () => { bar.Close(); _bar = null; CloseFocus(); RestoreMain(); };
+            bar.Cancelled += () => bar.Close();
+            // however the bar gets closed (Hủy, Alt+F4): cancel, or stop a running recording
+            bar.Closed += (_, _) =>
+            {
+                if (_bar != bar) return;
+                _bar = null;
+                if (_recording) _ = StopRecordingAsync();
+                else { CloseFocus(); RestoreMain(); }
+            };
             bar.Show();
             barShown = true;
         }
@@ -367,7 +393,7 @@ public sealed class AppController : IDisposable
             // remember what the user picked for next time
             _s.GifFps = c.GifFps; _s.GifWidth = c.GifWidth; _s.ShowClicks = c.Clicks; _s.ShowKeys = c.Keys; _s.Webcam = c.Webcam;
             if (!c.Gif) { _s.VideoQuality = c.Quality; _s.CaptureSystemAudio = c.Audio.HasFlag(AudioSources.System); _s.CaptureMicrophone = c.Audio.HasFlag(AudioSources.Microphone); }
-            _store.Save(_s);
+            try { _store.Save(_s); } catch (Exception) { /* not worth failing the recording over */ }
 
             // GIF: native-size capture at the chosen fps, no audio, no upscale; converted to .gif on stop and capped at 60 s.
             var req = c.Gif
@@ -380,8 +406,10 @@ public sealed class AppController : IDisposable
                 _gifLimit = new System.Windows.Threading.DispatcherTimer { Interval = FfmpegCommandBuilder.GifMaxDuration };
                 _gifLimit.Tick += (_, _) => { _gifLimit?.Stop(); _ = StopRecordingAsync(); };
                 _gifLimit.Start();
+                _gifStarted = DateTime.UtcNow;
             }
             _recording = true;
+            RegisterHotkeys(withPause: true); // the pause hotkey only exists while recording
             _focus?.SetState(recording: true);
             StartEffects(region, c);
             _tray?.SetRecording(true);
@@ -390,15 +418,31 @@ public sealed class AppController : IDisposable
         catch (Exception ex)
         {
             Report("Không bắt đầu quay được", ex);
-            _bar?.Close(); _bar = null; CloseFocus();
+            _bar?.Close(); _bar = null; CloseFocus(); RestoreMain();
         }
     }
 
-    /// <summary>Pause or resume (bar button or hotkey): the paused stretch is left out of the video and audio.</summary>
+    DateTime _gifStarted;
+    TimeSpan _gifLeft;
+
+    /// <summary>Pause or resume (bar button or hotkey): the paused stretch is left out of the video and audio,
+    /// and the 60 s GIF limit stops counting too.</summary>
     void ApplyPause(bool pause)
     {
         if (!_recording || _recorder is null) return;
-        if (pause) _recorder.Pause(); else _recorder.Resume();
+        if (pause != _recorder.IsPaused)
+        {
+            if (pause) _recorder.Pause(); else _recorder.Resume();
+            if (_gifLimit is not null)
+            {
+                if (pause) { _gifLeft = _gifLimit.Interval - (DateTime.UtcNow - _gifStarted); _gifLimit.Stop(); }
+                else
+                {
+                    _gifLimit.Interval = _gifLeft > TimeSpan.Zero ? _gifLeft : TimeSpan.FromMilliseconds(1);
+                    _gifStarted = DateTime.UtcNow; _gifLimit.Start();
+                }
+            }
+        }
         _bar?.SetPaused(pause);
         _focus?.SetState(recording: true, paused: pause);
     }
@@ -414,6 +458,8 @@ public sealed class AppController : IDisposable
     {
         if (!_recording) return;
         _recording = false;
+        _busy = true; // no new capture/recording until this one is fully written
+        RegisterHotkeys();
         _gifLimit?.Stop(); _gifLimit = null;
         var wasGif = _gifMode; _gifMode = false;
         _tray?.SetRecording(false);
@@ -436,7 +482,7 @@ public sealed class AppController : IDisposable
             else _tray?.Balloon("Hezb Clips", "Đang ghép video (upscale phần cuối ở nền). Sẽ báo khi xong.");
         }
         catch (Exception ex) { Report("Lỗi khi dừng quay", ex); }
-        finally { RestoreMain(); }
+        finally { _busy = false; RestoreMain(); }
     }
 
     // effects drawn on screen during recording (click ripples, key badges, webcam) — filled in by RecordingEffects
@@ -578,7 +624,9 @@ public sealed class AppController : IDisposable
         var cursor = System.Windows.Forms.Cursor.Position;
         using var firstFrame = src.CaptureRegion(region);
         using var acc = new ScrollAccumulator(firstFrame);
-        var notches = Math.Clamp((int)Math.Round(region.Height * 0.45 / 100.0), 1, 10);
+        // browsers scroll about 100 DIP per wheel notch: aim for ~40 % of the region per step so frames overlap well
+        var scale = WinNative.MonitorScale(region.X + region.Width / 2, region.Y + region.Height / 2);
+        var notches = Math.Clamp((int)Math.Round(region.Height * 0.4 / (100.0 * scale)), 1, 10);
         var misses = 0;
         try
         {
@@ -652,22 +700,25 @@ public sealed class AppController : IDisposable
         catch (Exception ex) { Report("Không mở được trình chỉnh sửa", ex); }
     }
 
-    string? TrimVideo(string path, TimeSpan from, TimeSpan to)
+    async Task<string?> TrimVideo(string path, TimeSpan from, TimeSpan to)
     {
         if (_ffmpeg is null) return null;
-        var output = Path.ChangeExtension(path, null) + "_trim.mp4";
+        var stem = Path.ChangeExtension(path, null) + "_trim";
+        var output = stem + ".mp4";
+        for (int i = 1; File.Exists(output); i++) output = $"{stem}_{i}.mp4"; // never overwrite an earlier trim
         try
         {
             var p = new FfmpegProcess(_ffmpeg);
             p.Start(TrimService.BuildArgs(path, output, from, to, _enc));
-            return p.ExitAsync().GetAwaiter().GetResult() == 0 ? output : null;
+            return await p.ExitAsync() == 0 ? output : null; // re-encode runs without freezing the UI
         }
         catch (Exception ex) { Report("Cắt video lỗi", ex); return null; }
     }
 
     void OnSettingsSaved(AppSettings s)
     {
-        _store.Save(_s);
+        try { _store.Save(_s); }
+        catch (Exception ex) { Report("Không lưu được cài đặt", ex); }
         RegisterHotkeys();
         _main?.SetFolder(_s.OutputDir);
         if (_failures.Count > 0)
@@ -683,6 +734,13 @@ public sealed class AppController : IDisposable
 
     public void Dispose()
     {
+        if (_recording && _recorder is not null)
+        {
+            // exiting mid-recording: finish the clip instead of leaving raw segments in %TEMP%
+            _recording = false; StopEffects(); _bar?.Close(); CloseFocus();
+            try { Task.Run(() => _recorder.StopAsync()).Wait(TimeSpan.FromSeconds(30)); } catch (Exception) { }
+        }
+        StopEffects();
         _hotkeys?.UnregisterAll();
         _hk?.Dispose();
         _tray?.Dispose();

@@ -32,13 +32,22 @@ public static class ScrollStitcher
         if (top + bottom >= h - 8 || MeanDiff(a, b, 0, 0, h) <= 1.0) return new(0, top, bottom);
 
         int band = h - top - bottom;
+        int lo = Math.Max(2, band / 40), hi = band - Math.Max(12, band / 12);
+        if (hi <= lo) return new(NoMatch, top, bottom);
+        var diffs = new double[hi + 1];
         var best = NoMatch; var bestDiff = double.MaxValue;
-        for (int s = Math.Max(2, band / 40); s <= band - Math.Max(16, band / 8); s++)
+        for (int s = lo; s <= hi; s++)
         {
             var d = MeanDiff(a, b, top + s, top, band - s);
+            diffs[s] = d;
             if (d < bestDiff) { bestDiff = d; best = s; }
         }
-        return new(bestDiff <= MaxDiff ? best : NoMatch, top, bottom);
+        if (bestDiff > MaxDiff) return new(NoMatch, top, bottom);
+        // blank or repetitive content matches almost everywhere: refuse instead of guessing a wrong shift
+        var second = double.MaxValue;
+        for (int s = lo; s <= hi; s++) if (Math.Abs(s - best) > 4 && diffs[s] < second) second = diffs[s];
+        if (second - bestDiff < 0.75) return new(NoMatch, top, bottom);
+        return new(best, top, bottom);
     }
 
     static double RowDiff(byte[] x, byte[] y)

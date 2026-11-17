@@ -38,6 +38,7 @@ public static class RegionSelector
             frozen?.TryGetValue(screen.Bounds, out pic);
             var w = new OverlayWindow(screen.Bounds, Finish, Overlays, pic);
             windows.Add(w);
+            w.Closed += (_, _) => Finish(null); // Alt+F4 must not leave the app stuck "busy"
             w.Show();
             Overlays.Add(new WindowInteropHelper(w).Handle);
         }

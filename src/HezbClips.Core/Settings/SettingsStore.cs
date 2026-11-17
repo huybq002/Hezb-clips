@@ -18,6 +18,7 @@ public class SettingsStore(string path)
         }
         catch (JsonException) { return Migrate(new AppSettings()); }
         catch (IOException) { return Migrate(new AppSettings()); }
+        catch (UnauthorizedAccessException) { return Migrate(new AppSettings()); }
     }
 
     public const int CurrentSchema = 2;
@@ -33,6 +34,9 @@ public class SettingsStore(string path)
     public void Save(AppSettings s)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        File.WriteAllText(path, JsonSerializer.Serialize(s, Opts));
+        // write a temp file then swap it in, so a crash mid-write never leaves a broken settings file
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(s, Opts));
+        File.Move(tmp, path, overwrite: true);
     }
 }

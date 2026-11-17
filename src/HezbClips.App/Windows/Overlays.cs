@@ -21,6 +21,17 @@ static class WinNative
     const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
     const int GWL_EXSTYLE = -20, WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000;
 
+    [StructLayout(LayoutKind.Sequential)] struct PT { public int X, Y; }
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(PT pt, uint flags);
+    [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr mon, int type, out uint dx, out uint dy);
+
+    /// <summary>Scale factor (1.0 = 100 %) of the monitor that contains the physical point.</summary>
+    public static double MonitorScale(int x, int y)
+    {
+        try { return GetDpiForMonitor(MonitorFromPoint(new PT { X = x, Y = y }, 2), 0, out var dx, out _) == 0 ? dx / 96.0 : 1.0; }
+        catch (Exception) { return 1.0; }
+    }
+
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
 

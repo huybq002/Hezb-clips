@@ -44,8 +44,20 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
         _plan.Clear(); _warnings.Clear(); _monitor = new FrameDropMonitor(); _writeFailed = false;
         _interval = TimeSpan.FromSeconds(1.0 / r.Fps);
         audio.Start(r.Audio, Path.Combine(_dir, "sys.wav"), Path.Combine(_dir, "mic.wav"));
-        OpenSegment(scaled: r.Mode == RecordMode.Live);
-        frames.Start(new Rectangle(r.Region.X, r.Region.Y, _w, _h), r.Fps, OnFrame);
+        try
+        {
+            OpenSegment(scaled: r.Mode == RecordMode.Live);
+            frames.Start(new Rectangle(r.Region.X, r.Region.Y, _w, _h), r.Fps, OnFrame);
+        }
+        catch
+        {
+            // do not leave audio capture / ffmpeg running when capture could not start
+            try { frames.Stop(); } catch (Exception) { }
+            audio.Stop();
+            lock (_lock) { var p = _proc; _proc = null; try { p?.StdIn.Dispose(); } catch (IOException) { } }
+            TryDeleteDir(_dir);
+            throw;
+        }
     }
 
     void OpenSegment(bool scaled)
@@ -89,36 +101,42 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
         // Stop audio first: flushing the video encoder can take seconds, and audio must not outlast the video.
         var a = audio.Stop();
         lock (_lock) CloseCurrent();
-        _warnings.AddRange(a.Warnings);
+        // snapshot everything: a new recording may start on this recorder while we are still muxing
+        var dir = _dir; var req = _req; var target = _target; var w = _w; var h = _h;
+        var segs = _plan.Segments.ToList();
+        var warnings = new List<string>(_warnings); warnings.AddRange(a.Warnings);
 
         Directory.CreateDirectory(s.OutputDir);
         var final = FileNamer.Next(s.OutputDir, "Clip", "mp4", DateTime.Now, File.Exists);
-        var segs = _plan.Segments;
         Guid? job = null;
 
         if (segs.Count == 1)
         {
-            await RunFfmpeg(FfmpegCommandBuilder.MuxArgs(segs[0].Path, a.SystemWav, a.MicWav, final));
-            if (!segs[0].Scaled && !_req.SkipUpscale)
+            try
             {
-                var up = Path.ChangeExtension(final, null) + $"_{(int)_req.Quality}p.mp4";
-                job = queue.Enqueue(final, up, _target);
+                await RunFfmpeg(FfmpegCommandBuilder.MuxArgs(segs[0].Path, a.SystemWav, a.MicWav, final));
+                // only when the export size is really bigger than what was recorded
+                if (!segs[0].Scaled && !req.SkipUpscale && (w < target.W || h < target.H))
+                {
+                    var up = Path.ChangeExtension(final, null) + $"_{(int)req.Quality}p.mp4";
+                    job = queue.Enqueue(final, up, target);
+                }
             }
-            TryDeleteDir(_dir);
+            finally { TryDeleteDir(dir); }
         }
         else
         {
-            job = FinalizeAfterUpscale(segs, a, final);
+            job = FinalizeAfterUpscale(segs, a, final, dir, target);
         }
-        return new RecordResult(final, job, _warnings.ToArray());
+        return new RecordResult(final, job, warnings.ToArray());
     }
 
     // Live recording that was downgraded: [scaled segment, unscaled segment]. Upscale the tail in the
     // background queue, then concat + mux and raise Finalized.
-    Guid FinalizeAfterUpscale(IReadOnlyList<Segment> segs, AudioResult a, string final)
+    Guid FinalizeAfterUpscale(IReadOnlyList<Segment> segs, AudioResult a, string final, string dir, (int W, int H) target)
     {
         var tail = segs[^1].Path;
-        var dir = _dir; var head = segs[0].Path;
+        var head = segs[0].Path;
         var tailUp = Path.Combine(dir, "tail_up.mp4");
         var gate = new object(); Guid? mine = null; var early = new List<Guid>();
 
@@ -152,7 +170,7 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
 
         queue.Completed += OnDone; queue.Failed += OnFail;
         Guid job; bool already;
-        lock (gate) { job = queue.Enqueue(tail, tailUp, _target); mine = job; already = early.Contains(job); }
+        lock (gate) { job = queue.Enqueue(tail, tailUp, target); mine = job; already = early.Contains(job); }
         if (already) { queue.Completed -= OnDone; queue.Failed -= OnFail; _ = Go(); }
         return job;
     }

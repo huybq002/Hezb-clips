@@ -92,11 +92,17 @@ public static class LibraryQuery
 
 public static class LibraryCleaner
 {
+    static readonly System.Text.RegularExpressions.Regex Own =
+        new(@"^(Clip|Scroll)_\d{8}_\d{6}", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Only files named the way Hezb Clips names them (Clip_/Scroll_ + timestamp, plus _edit/_trim/_1080p variants).</summary>
+    public static bool IsOwnCapture(string path) => Own.IsMatch(Path.GetFileName(path));
+
     /// <summary>Files older than the retention period, never including starred ones. Zero or negative days = keep everything.</summary>
     public static IReadOnlyList<MediaItem> FindExpired(IEnumerable<MediaItem> items, LibraryMetaStore meta, int retentionDays, DateTime now)
     {
         if (retentionDays <= 0) return Array.Empty<MediaItem>();
         var cutoff = now - TimeSpan.FromDays(retentionDays);
-        return items.Where(i => i.Modified < cutoff && !meta.IsStarred(i.Path)).ToList();
+        return items.Where(i => i.Modified < cutoff && IsOwnCapture(i.Path) && !meta.IsStarred(i.Path)).ToList();
     }
 }

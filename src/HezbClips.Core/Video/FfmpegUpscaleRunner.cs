@@ -20,7 +20,8 @@ public class FfmpegUpscaleRunner(HardwareProfile p, string ffmpeg, string? realE
             var done = false;
             if (useAi)
             {
-                try { await AiPathAsync(job, fps, tmpOut, progress, ct); done = true; }
+                var factor = Math.Max(job.Target.W / (double)sw, job.Target.H / (double)sh) <= 2.0 ? 2 : 4;
+                try { await AiPathAsync(job, fps, factor, tmpOut, progress, ct); done = true; }
                 catch (InvalidOperationException) { /* AI tool failed: fall back to Lanczos below */ }
             }
             if (!done) await Run(ffmpeg,
@@ -31,7 +32,7 @@ public class FfmpegUpscaleRunner(HardwareProfile p, string ffmpeg, string? realE
         finally { try { if (File.Exists(tmpOut)) File.Delete(tmpOut); } catch (IOException) { } }
     }
 
-    async Task AiPathAsync(UpscaleJob job, double fps, string tmpOut, IProgress<double> progress, CancellationToken ct)
+    async Task AiPathAsync(UpscaleJob job, double fps, int factor, string tmpOut, IProgress<double> progress, CancellationToken ct)
     {
         var work = Directory.CreateTempSubdirectory("hezb-up").FullName;
         var inDir = Path.Combine(work, "in"); var outDir = Path.Combine(work, "out");
@@ -40,7 +41,7 @@ public class FfmpegUpscaleRunner(HardwareProfile p, string ffmpeg, string? realE
         {
             await Run(ffmpeg, $"-y -i \"{job.InputPath}\" -vsync 0 \"{Path.Combine(inDir, "%08d.png")}\"", ct);
             var total = Directory.GetFiles(inDir).Length;
-            var esr = Run(realEsrganExe!, $"-i \"{inDir}\" -o \"{outDir}\" -s 4 -f png", ct);
+            var esr = Run(realEsrganExe!, $"-i \"{inDir}\" -o \"{outDir}\" -s {factor} -f png", ct);
             while (!esr.IsCompleted)
             {
                 await Task.WhenAny(esr, Task.Delay(500, ct));
@@ -56,6 +57,7 @@ public class FfmpegUpscaleRunner(HardwareProfile p, string ffmpeg, string? realE
 
     async Task<(int W, int H, double Fps)> ProbeAsync(string path, CancellationToken ct)
     {
+        if (!File.Exists(Ffprobe)) return await ProbeWithFfmpegAsync(path, ct);
         var o = await RunCapture(Ffprobe,
             $"-v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate -of csv=p=0 \"{path}\"", ct);
         var parts = o.Trim().Split(',');
@@ -63,6 +65,18 @@ public class FfmpegUpscaleRunner(HardwareProfile p, string ffmpeg, string? realE
         var fps = rate.Length == 2 ? double.Parse(rate[0], CultureInfo.InvariantCulture) / double.Parse(rate[1], CultureInfo.InvariantCulture)
                                    : double.Parse(rate[0], CultureInfo.InvariantCulture);
         return (int.Parse(parts[0]), int.Parse(parts[1]), fps);
+    }
+
+    /// <summary>Fallback when only ffmpeg.exe is installed: read size and fps from "ffmpeg -i" output.</summary>
+    async Task<(int W, int H, double Fps)> ProbeWithFfmpegAsync(string path, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(ffmpeg, $"-hide_banner -i \"{path}\"") { CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true };
+        using var proc = Process.Start(psi) ?? throw new InvalidOperationException("cannot start ffmpeg");
+        var err = await proc.StandardError.ReadToEndAsync(ct);
+        await proc.WaitForExitAsync(ct);
+        var m = System.Text.RegularExpressions.Regex.Match(err, @"Video:.*?(\d{2,5})x(\d{2,5}).*?([\d.]+) fps");
+        if (!m.Success) throw new InvalidOperationException("cannot read video size: " + err[^Math.Min(err.Length, 300)..]);
+        return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), double.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture));
     }
 
     static async Task Run(string exe, string args, CancellationToken ct) => await RunCapture(exe, args, ct);

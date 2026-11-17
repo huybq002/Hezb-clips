@@ -73,7 +73,7 @@ public sealed class RecordingEffects : IDisposable
             {
                 if (t.IsFaulted) Application.Current.Dispatcher.Invoke(() =>
                 {
-                    _cam?.Close(); _cam = null;
+                    _cam?.Stop(); _cam = null;
                     _notify("Không mở được webcam: " + t.Exception?.GetBaseException().Message);
                 });
             });
@@ -244,27 +244,39 @@ public sealed class RecordingEffects : IDisposable
                 },
             };
             MouseLeftButtonDown += (_, _) => { try { DragMove(); } catch (InvalidOperationException) { } };
-            using var g = System.Drawing.Graphics.FromHwnd(IntPtr.Zero);
-            var k = g.DpiX / 96.0;
-            Left = (_region.Right) / k - Width - 12; Top = (_region.Bottom) / k - Height - 12;
+            Left = -10000; Top = -10000; // real position set in physical pixels once the window exists
+            Loaded += (_, _) =>
+            {
+                var k = VisualTreeHelper.GetDpi(this).DpiScaleX;
+                int w = (int)(ActualWidth * k), h = (int)(ActualHeight * k);
+                WinNative.SetWindowPos(new WindowInteropHelper(this).Handle, WinNative.HWND_TOPMOST,
+                    _region.Right - w - 12, _region.Bottom - h - 12, 0, 0, 0x0001 /*NOSIZE*/ | WinNative.SWP_NOACTIVATE);
+            };
         }
+
+        volatile bool _stopped;
 
         public async Task StartAsync()
         {
             var groups = await MediaFrameSourceGroup.FindAllAsync();
             var group = groups.FirstOrDefault(g => g.SourceInfos.Any(i => i.SourceKind == MediaFrameSourceKind.Color))
                 ?? throw new InvalidOperationException("không tìm thấy camera");
-            _capture = new MediaCapture();
-            await _capture.InitializeAsync(new MediaCaptureInitializationSettings
+            var capture = new MediaCapture();
+            _capture = capture;
+            await capture.InitializeAsync(new MediaCaptureInitializationSettings
             {
                 SourceGroup = group, SharingMode = MediaCaptureSharingMode.ExclusiveControl,
                 MemoryPreference = MediaCaptureMemoryPreference.Cpu, StreamingCaptureMode = StreamingCaptureMode.Video,
             });
-            var source = _capture.FrameSources.Values.First(s => s.Info.SourceKind == MediaFrameSourceKind.Color);
-            _reader = await _capture.CreateFrameReaderAsync(source, MediaEncodingSubtypes.Bgra8);
-            _reader.FrameArrived += OnFrame;
+            if (_stopped) { capture.Dispose(); return; } // recording ended while the camera was opening
+            var source = capture.FrameSources.Values.First(s => s.Info.SourceKind == MediaFrameSourceKind.Color);
+            var reader = await capture.CreateFrameReaderAsync(source, MediaEncodingSubtypes.Bgra8);
+            if (_stopped) { reader.Dispose(); capture.Dispose(); return; }
+            _reader = reader;
+            reader.FrameArrived += OnFrame;
             await Application.Current.Dispatcher.InvokeAsync(Show);
-            await _reader.StartAsync();
+            await reader.StartAsync();
+            if (_stopped) Stop();
         }
 
         void OnFrame(MediaFrameReader reader, MediaFrameArrivedEventArgs e)
@@ -291,10 +303,16 @@ public sealed class RecordingEffects : IDisposable
 
         public void Stop()
         {
-            try { if (_reader is not null) { _reader.FrameArrived -= OnFrame; _ = _reader.StopAsync(); } } catch (Exception) { }
-            try { _capture?.Dispose(); } catch (Exception) { }
+            _stopped = true;
+            var reader = _reader; var capture = _capture;
             _reader = null; _capture = null;
-            Close();
+            // stop the reader, then release it and the camera (turns the camera light off)
+            _ = Task.Run(async () =>
+            {
+                try { if (reader is not null) { reader.FrameArrived -= OnFrame; await reader.StopAsync(); reader.Dispose(); } } catch (Exception) { }
+                try { capture?.Dispose(); } catch (Exception) { }
+            });
+            Dispatcher.BeginInvoke(Close);
         }
     }
 }

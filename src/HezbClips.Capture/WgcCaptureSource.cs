@@ -43,6 +43,7 @@ public class WgcCaptureSource : ICaptureSource
         using var pool = Direct3D11CaptureFramePool.CreateFreeThreaded(
             winDev, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, item.Size);
         using var session = pool.CreateCaptureSession(item);
+        try { session.IsCursorCaptureEnabled = false; } catch (Exception) { /* older Windows: cursor stays */ }
         var tcs = new TaskCompletionSource<Direct3D11CaptureFrame>(TaskCreationOptions.RunContinuationsAsynchronously);
         pool.FrameArrived += (s, _) => { var f = s.TryGetNextFrame(); if (f is not null) tcs.TrySetResult(f); };
         session.StartCapture();

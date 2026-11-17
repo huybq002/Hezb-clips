@@ -32,10 +32,18 @@ public static class WindowFinder
     /// <summary>Bounds of the window the user is working in (skips our own windows, desktop, taskbar).</summary>
     public static Rectangle? Foreground(ICollection<IntPtr> ignore)
     {
-        var h = GetForegroundWindow();
-        if (h == IntPtr.Zero || ignore.Contains(h) || IsIconic(h) || IsDesktop(h)) return null;
-        return TryBounds(h, out var r) && r.Width >= 4 && r.Height >= 4 ? r : null;
+        // the current foreground is our tray menu / main window when started from there: fall back to the last app window
+        foreach (var h in new[] { GetForegroundWindow(), ForegroundTracker.Last })
+        {
+            if (h == IntPtr.Zero || ignore.Contains(h) || IsOwnProcess(h) || !IsWindowVisible(h) || IsIconic(h) || IsDesktop(h)) continue;
+            if (TryBounds(h, out var r) && r.Width >= 4 && r.Height >= 4) return r;
+        }
+        return null;
     }
+
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    internal static bool IsOwnProcess(IntPtr h) { GetWindowThreadProcessId(h, out var pid); return pid == (uint)Environment.ProcessId; }
+    internal static bool IsShell(IntPtr h) => IsDesktop(h);
 
     public static Rectangle? FromPoint(Point physical, ICollection<IntPtr> ignore)
     {
@@ -78,5 +86,26 @@ public static class WindowFinder
         GetClassName(h, sb, sb.Capacity);
         var c = sb.ToString();
         return c is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
+    }
+}
+
+/// <summary>Remembers the last foreground window that belongs to another app (not ours, not the desktop/taskbar).</summary>
+public static class ForegroundTracker
+{
+    delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int obj, int child, uint thread, uint time);
+    [DllImport("user32.dll")] static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr mod, WinEventProc proc, uint pid, uint tid, uint flags);
+    static WinEventProc? _proc; // kept alive for the hook
+    static IntPtr _hook;
+
+    public static IntPtr Last { get; private set; }
+
+    public static void Start()
+    {
+        if (_hook != IntPtr.Zero) return;
+        _proc = (_, _, hwnd, _, _, _, _) =>
+        {
+            if (hwnd != IntPtr.Zero && !WindowFinder.IsOwnProcess(hwnd) && !WindowFinder.IsShell(hwnd)) Last = hwnd;
+        };
+        _hook = SetWinEventHook(3 /*EVENT_SYSTEM_FOREGROUND*/, 3, IntPtr.Zero, _proc, 0, 0, 0 /*WINEVENT_OUTOFCONTEXT*/);
     }
 }

@@ -42,6 +42,7 @@ public sealed partial class ImageEditorWindow : Window
     Color _color = (Color)ColorConverter.ConvertFromString("#E5484D");
     Point _start; UIElement? _drawing; Polyline? _poly; TextBox? _editor;
     bool _dirty;
+    string? _savedPath;
 
     readonly Dictionary<string, string> _keys;
     readonly Dictionary<Key, Tool> _keyToTool = new();
@@ -518,7 +519,8 @@ public sealed partial class ImageEditorWindow : Window
         var w = _bmp.PixelWidth; var h = _bmp.PixelHeight;
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
-            dc.DrawRectangle(new VisualBrush(_canvas) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top }, null, new Rect(0, 0, w, h));
+            // absolute viewbox: shapes poking past the edges must not shift or shrink the picture
+            dc.DrawRectangle(new VisualBrush(_canvas) { Stretch = Stretch.None, ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, w, h), AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top }, null, new Rect(0, 0, w, h));
         var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(dv); rtb.Freeze();
         return rtb;
@@ -531,7 +533,10 @@ public sealed partial class ImageEditorWindow : Window
             var dir = System.IO.Path.GetDirectoryName(_path)!;
             var stem = System.IO.Path.GetFileNameWithoutExtension(_path);
             if (stem.EndsWith("_edit", StringComparison.OrdinalIgnoreCase)) stem = stem[..^5];
-            var outPath = System.IO.Path.Combine(dir, stem + "_edit.png");
+            // first save picks a free name (never overwrites an older edit); later saves in this window update that file
+            var outPath = _savedPath ?? System.IO.Path.Combine(dir, stem + "_edit.png");
+            for (int i = 1; _savedPath is null && File.Exists(outPath); i++) outPath = System.IO.Path.Combine(dir, $"{stem}_edit_{i}.png");
+            _savedPath = outPath;
             var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(Render()));
             using (var fs = File.Create(outPath)) enc.Save(fs);
             _dirty = false;

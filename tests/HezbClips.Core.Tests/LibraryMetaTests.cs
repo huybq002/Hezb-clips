@@ -49,14 +49,14 @@ public class LibraryMetaTests
 
     [Fact] public void Cleaner_skips_starred_and_recent_and_disabled()
     {
-        var p = Tmp(); var meta = new LibraryMetaStore(p); meta.ToggleStar("keep.png");
+        var p = Tmp(); var meta = new LibraryMetaStore(p); meta.ToggleStar("Clip_20260801_101010.png");
         var now = new DateTime(2026, 11, 17);
         var items = new[]
         {
-            new MediaItem("old.png", MediaKind.Image, now.AddDays(-40), 1), new MediaItem("keep.png", MediaKind.Image, now.AddDays(-90), 1),
-            new MediaItem("new.png", MediaKind.Image, now.AddDays(-2), 1),
+            new MediaItem("Clip_20261001_101010_edit.png", MediaKind.Image, now.AddDays(-40), 1), new MediaItem("Clip_20260801_101010.png", MediaKind.Image, now.AddDays(-90), 1),
+            new MediaItem("Clip_20261115_101010.png", MediaKind.Image, now.AddDays(-2), 1), new MediaItem("holiday.jpg", MediaKind.Image, now.AddDays(-300), 1),
         };
-        Assert.Equal(new[] { "old.png" }, LibraryCleaner.FindExpired(items, meta, 30, now).Select(i => i.Path));
+        Assert.Equal(new[] { "Clip_20261001_101010_edit.png" }, LibraryCleaner.FindExpired(items, meta, 30, now).Select(i => i.Path));
         Assert.Empty(LibraryCleaner.FindExpired(items, meta, 0, now));
         File.Delete(p);
     }
@@ -140,5 +140,16 @@ public class ScrollStitcherTests
             for (int y = 0; y < 800; y += 37) Assert.Equal(page[5, y], img[5, y]);
         }
         foreach (var f in frames) f.Dispose();
+    }
+}
+
+public class ScrollAmbiguityTests
+{
+    [Fact] public void Blank_frames_that_moved_are_not_guessed()
+    {
+        using var a = new Image<Rgba32>(100, 300, new Rgba32(255, 255, 255, 255));
+        using var b = new Image<Rgba32>(100, 300, new Rgba32(255, 255, 255, 255));
+        b[50, 10] = new Rgba32(0, 0, 0, 255); // tiny change so it is not "identical"
+        Assert.True(ScrollStitcher.FindShift(a, b) <= 0);
     }
 }

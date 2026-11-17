@@ -23,7 +23,7 @@ public sealed class PostCapturePopup : Window
     readonly bool _video;
 
     /// <param name="trim">Called with (path, from, to); returns the trimmed file path.</param>
-    public PostCapturePopup(string path, bool isVideo, string? note, Func<string, TimeSpan, TimeSpan, string?> trim, Action<string>? edit = null)
+    public PostCapturePopup(string path, bool isVideo, string? note, Func<string, TimeSpan, TimeSpan, System.Threading.Tasks.Task<string?>> trim, Action<string>? edit = null)
     {
         _path = path; _video = isVideo;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; Topmost = true; ShowInTaskbar = false;
@@ -38,16 +38,18 @@ public sealed class PostCapturePopup : Window
         copyBtn.Style = Ui.Style("PrimaryButton");
         copyBtn.Click += (_, _) => { if (Copy()) FlashCopied(copyBtn); };
         B("\uE838 Mở thư mục", () => Process.Start("explorer.exe", $"/select,\"{_path}\""));
-        B("\uE74D Xóa", () => { try { File.Delete(_path); } catch (IOException) { } Close(); });
+        B("\uE74D Xóa", () => { try { File.Delete(_path); } catch (Exception) { } Close(); });
         if (!isVideo && edit is not null && Path.GetExtension(path).ToLowerInvariant() != ".gif") B("\uE70F Sửa", () => { edit(_path); Close(); });
         if (isVideo) B("\uE7A8 Cắt", () => _trimPanel.Visibility = Visibility.Visible);
 
         var apply = new Button { Content = "Cắt ngay", Padding = new Thickness(10, 5, 10, 5), Style = Ui.Style("PrimaryButton") };
-        apply.Click += (_, _) =>
+        apply.Click += async (_, _) =>
         {
             if (TimeSpan.TryParse("00:" + _from.Text, out var a) && TimeSpan.TryParse("00:" + _to.Text, out var b) && b > a)
             {
-                var res = trim(_path, a, b);
+                apply.IsEnabled = false; apply.Content = "Đang cắt…";
+                var res = await trim(_path, a, b);
+                apply.IsEnabled = true; apply.Content = "Cắt ngay";
                 if (res is not null) { _path = res; _title.Text = Path.GetFileName(res); _trimPanel.Visibility = Visibility.Collapsed; }
             }
         };

@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Threading;
 using System.Windows;
@@ -6,12 +7,22 @@ namespace HezbClips.App;
 
 public partial class App : Application
 {
+    const string MutexName = "HezbClips.SingleInstance", ShowEventName = "HezbClips.ShowMain";
     Mutex? _single;
+    EventWaitHandle? _show;
     AppController? _controller;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        _single = new Mutex(true, MutexName, out var created);
+        if (!created)
+        {
+            // already running (maybe hidden in the tray): ask it to show its window, then quit
+            try { using var ev = EventWaitHandle.OpenExisting(ShowEventName); ev.Set(); } catch (Exception) { }
+            Shutdown(); return;
+        }
+
         // One UI font with full Vietnamese coverage, crisp (pixel-snapped) text everywhere, including tooltips and menus.
         var font = new System.Windows.Media.FontFamily("Segoe UI Variable Text, Segoe UI");
         foreach (var t in new[] { typeof(Window), typeof(System.Windows.Controls.ToolTip), typeof(System.Windows.Controls.ContextMenu) })
@@ -19,10 +30,21 @@ public partial class App : Application
             System.Windows.Documents.TextElement.FontFamilyProperty.OverrideMetadata(t, new FrameworkPropertyMetadata(font, FrameworkPropertyMetadataOptions.Inherits));
             System.Windows.Media.TextOptions.TextFormattingModeProperty.OverrideMetadata(t, new FrameworkPropertyMetadata(System.Windows.Media.TextFormattingMode.Display, FrameworkPropertyMetadataOptions.Inherits));
         }
-        _single = new Mutex(true, "HezbClips.SingleInstance", out var created);
-        if (!created) { Shutdown(); return; }
+
+        // nothing should silently kill the app: log, tell the user, keep running
+        DispatcherUnhandledException += (_, ex) => { _controller?.ReportUnhandled(ex.Exception); ex.Handled = true; };
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, ex) => { Dispatcher.BeginInvoke(() => _controller?.ReportUnhandled(ex.Exception)); ex.SetObserved(); };
+
         _controller = new AppController(this);
         _controller.Start(showMain: !e.Args.Contains("--tray"));
+
+        _show = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+        var waiter = new Thread(() =>
+        {
+            while (_show.WaitOne())
+                Dispatcher.BeginInvoke(() => _controller?.ShowMain());
+        }) { IsBackground = true, Name = "show-main" };
+        waiter.Start();
     }
 
     protected override void OnExit(ExitEventArgs e)

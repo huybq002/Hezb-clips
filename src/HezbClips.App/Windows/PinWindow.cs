@@ -14,7 +14,7 @@ public sealed class PinWindow : Window
     readonly Image _img = new() { Stretch = Stretch.Uniform };
     readonly double _aspect;
 
-    public PinWindow(BitmapSource bmp, Point? at = null)
+    public PinWindow(BitmapSource bmp, System.Drawing.Point? atPhysical = null)
     {
         _aspect = bmp.PixelWidth / (double)bmp.PixelHeight;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; ShowInTaskbar = false; Topmost = true;
@@ -34,7 +34,9 @@ public sealed class PinWindow : Window
         SizeToContent = SizeToContent.WidthAndHeight;
         Loaded += (_, _) =>
         {
-            Left = at?.X ?? wa.Left + (wa.Width - ActualWidth) / 2; Top = at?.Y ?? wa.Top + (wa.Height - ActualHeight) / 2;
+            Left = wa.Left + (wa.Width - ActualWidth) / 2; Top = wa.Top + (wa.Height - ActualHeight) / 2;
+            if (atPhysical is { } p)
+                WinNative.SetWindowPos(new System.Windows.Interop.WindowInteropHelper(this).Handle, WinNative.HWND_TOPMOST, p.X, p.Y, 0, 0, 0x0001 /*NOSIZE*/);
         };
         MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 2) Close(); else { try { DragMove(); } catch (InvalidOperationException) { } } };
         MouseRightButtonUp += (_, _) => Close();
@@ -48,10 +50,10 @@ public sealed class PinWindow : Window
         };
     }
 
-    public static PinWindow FromFile(string path, Point? at = null)
+    public static PinWindow FromFile(string path, System.Drawing.Point? atPhysical = null)
     {
         var b = new BitmapImage();
         b.BeginInit(); b.UriSource = new Uri(path); b.CacheOption = BitmapCacheOption.OnLoad; b.EndInit(); b.Freeze();
-        return new PinWindow(b, at);
+        return new PinWindow(b, atPhysical);
     }
 }

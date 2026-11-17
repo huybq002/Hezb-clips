@@ -46,7 +46,7 @@ public sealed class LibraryView : DockPanel
         var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
         var right = new StackPanel { Orientation = Orientation.Horizontal };
         var openDir = new Button { Content = Ui.Content("\uE838 Mở thư mục"), Margin = new Thickness(8, 0, 0, 0) };
-        openDir.Click += (_, _) => { Directory.CreateDirectory(_dir); Process.Start("explorer.exe", $"\"{_dir}\""); };
+        openDir.Click += (_, _) => { try { Directory.CreateDirectory(_dir); Process.Start("explorer.exe", $"\"{_dir}\""); } catch (Exception) { } };
         var refresh = new Button { Content = Ui.Glyph("\uE72C"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(10, 6, 10, 6), ToolTip = "Làm mới (F5)" };
         refresh.Click += (_, _) => { _grid.Tag = null; Reload(); };
         right.Children.Add(_summary); right.Children.Add(openDir); right.Children.Add(refresh);
