@@ -1,0 +1,27 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Effects;
+
+namespace HezbClips.App.Windows;
+
+/// <summary>Shared look: brushes/styles come from Theme.xaml.</summary>
+public static class Ui
+{
+    public static Brush Brush(string key) => (Brush)Application.Current.FindResource(key);
+    public static Style Style(string key) => (Style)Application.Current.FindResource(key);
+
+    /// <summary>Rounded dark card with soft shadow. Host window must set AllowsTransparency + transparent background.</summary>
+    public static Border Card(UIElement child, double padding = 12) => new()
+    {
+        Background = Brush("Bg"), BorderBrush = Brush("Border"), BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(14), Padding = new Thickness(padding), Margin = new Thickness(12),
+        Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 2, Opacity = 0.45, Color = Colors.Black },
+        Child = child,
+    };
+
+    public static TextBlock Label(string text, bool dim = false, double size = 13) => new()
+    {
+        Text = text, Foreground = Brush(dim ? "TextDim" : "Text"), FontSize = size, TextWrapping = TextWrapping.Wrap,
+    };
+}

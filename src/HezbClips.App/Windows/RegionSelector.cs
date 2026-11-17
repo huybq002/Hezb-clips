@@ -50,9 +50,9 @@ public static class RegionSelector
         readonly System.Drawing.Rectangle _bounds;
         readonly Action<System.Drawing.Rectangle?> _finish;
         readonly Canvas _canvas = new();
-        readonly Rectangle _sel = new() { Stroke = Brushes.DeepSkyBlue, StrokeThickness = 2, Fill = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)), Visibility = Visibility.Collapsed };
-        readonly TextBlock _label = new() { Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(180, 0, 0, 0)), Padding = new Thickness(4, 1, 4, 1), Visibility = Visibility.Collapsed };
-        readonly Rectangle _hover = new() { Stroke = Brushes.DeepSkyBlue, StrokeThickness = 3, Fill = new SolidColorBrush(Color.FromArgb(50, 0, 160, 255)), Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+        readonly Rectangle _sel = new() { Stroke = Ui.Brush("Accent"), StrokeThickness = 2, RadiusX = 2, RadiusY = 2, Fill = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255)), Visibility = Visibility.Collapsed };
+        readonly TextBlock _label = new() { Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(220, 27, 28, 34)), FontSize = 12, FontFamily = new FontFamily("Consolas"), Padding = new Thickness(8, 3, 8, 3), Visibility = Visibility.Collapsed };
+        readonly Rectangle _hover = new() { Stroke = Ui.Brush("Accent"), StrokeThickness = 2, RadiusX = 3, RadiusY = 3, Fill = new SolidColorBrush(Color.FromArgb(55, 76, 141, 255)), Visibility = Visibility.Collapsed, IsHitTestVisible = false };
         readonly HashSet<IntPtr> _ignore;
         System.Drawing.Rectangle? _hoverPhysical;
         Point _start; bool _dragging, _moved;

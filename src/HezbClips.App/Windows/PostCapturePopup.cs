@@ -14,11 +14,11 @@ namespace HezbClips.App.Windows;
 public sealed class PostCapturePopup : Window
 {
     readonly DispatcherTimer _auto = new() { Interval = TimeSpan.FromSeconds(8) };
-    readonly TextBlock _title = new() { Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 320 };
-    readonly TextBlock _note = new() { Foreground = Brushes.Gainsboro, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, Margin = new Thickness(0, 2, 0, 0) };
+    readonly TextBlock _title = new() { Foreground = Ui.Brush("Text"), FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 320 };
+    readonly TextBlock _note = new() { Foreground = Ui.Brush("TextDim"), FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxWidth = 320, Margin = new Thickness(0, 2, 0, 0) };
     readonly StackPanel _trimPanel = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0), Visibility = Visibility.Collapsed };
-    readonly TextBox _from = new() { Width = 60, Text = "00:00" };
-    readonly TextBox _to = new() { Width = 60, Text = "00:10", Margin = new Thickness(6, 0, 6, 0) };
+    readonly TextBox _from = new() { Width = 64, Text = "00:00" };
+    readonly TextBox _to = new() { Width = 64, Text = "00:10", Margin = new Thickness(6, 0, 6, 0) };
     string _path;
     readonly bool _video;
 
@@ -28,18 +28,18 @@ public sealed class PostCapturePopup : Window
         _path = path; _video = isVideo;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; Topmost = true; ShowInTaskbar = false;
         SizeToContent = SizeToContent.WidthAndHeight; ShowActivated = false;
-        Background = new SolidColorBrush(Color.FromRgb(32, 32, 36));
+        AllowsTransparency = true; Background = Brushes.Transparent;
         _title.Text = Path.GetFileName(path);
         _note.Text = note ?? ""; _note.Visibility = string.IsNullOrEmpty(note) ? Visibility.Collapsed : Visibility.Visible;
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        Button B(string t, Action a) { var b = new Button { Content = t, Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(8, 3, 8, 3) }; b.Click += (_, _) => a(); buttons.Children.Add(b); return b; }
-        B("Copy", Copy);
-        B("Mở thư mục", () => Process.Start("explorer.exe", $"/select,\"{_path}\""));
-        B("Xóa", () => { try { File.Delete(_path); } catch (IOException) { } Close(); });
-        if (isVideo) B("Cắt", () => _trimPanel.Visibility = Visibility.Visible);
+        Button B(string t, Action a) { var b = new Button { Content = t, Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(10, 5, 10, 5) }; b.Click += (_, _) => a(); buttons.Children.Add(b); return b; }
+        B("📋 Copy", Copy).Style = Ui.Style("PrimaryButton");
+        B("📂 Mở thư mục", () => Process.Start("explorer.exe", $"/select,\"{_path}\""));
+        B("🗑 Xóa", () => { try { File.Delete(_path); } catch (IOException) { } Close(); });
+        if (isVideo) B("✂ Cắt", () => _trimPanel.Visibility = Visibility.Visible);
 
-        var apply = new Button { Content = "Cắt ngay", Padding = new Thickness(8, 3, 8, 3) };
+        var apply = new Button { Content = "Cắt ngay", Padding = new Thickness(10, 5, 10, 5), Style = Ui.Style("PrimaryButton") };
         apply.Click += (_, _) =>
         {
             if (TimeSpan.TryParse("00:" + _from.Text, out var a) && TimeSpan.TryParse("00:" + _to.Text, out var b) && b > a)
@@ -48,16 +48,16 @@ public sealed class PostCapturePopup : Window
                 if (res is not null) { _path = res; _title.Text = Path.GetFileName(res); _trimPanel.Visibility = Visibility.Collapsed; }
             }
         };
-        _trimPanel.Children.Add(new TextBlock { Text = "từ", Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) });
+        _trimPanel.Children.Add(new TextBlock { Text = "từ", Foreground = Ui.Brush("TextDim"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) });
         _trimPanel.Children.Add(_from);
-        _trimPanel.Children.Add(new TextBlock { Text = "đến", Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 4, 0) });
+        _trimPanel.Children.Add(new TextBlock { Text = "đến", Foreground = Ui.Brush("TextDim"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 4, 0) });
         _trimPanel.Children.Add(_to); _trimPanel.Children.Add(apply);
 
-        var col = new StackPanel { Margin = new Thickness(10) };
+        var col = new StackPanel();
         var thumb = Thumbnail(path, isVideo);
         if (thumb is not null) col.Children.Add(thumb);
         col.Children.Add(_title); col.Children.Add(_note); col.Children.Add(buttons); col.Children.Add(_trimPanel);
-        Content = new Border { BorderBrush = Brushes.DimGray, BorderThickness = new Thickness(1), Child = col };
+        Content = Ui.Card(col, 12);
 
         _auto.Tick += (_, _) => { if (!IsMouseOver && _trimPanel.Visibility != Visibility.Visible) Close(); };
         MouseEnter += (_, _) => _auto.Stop();
@@ -65,7 +65,7 @@ public sealed class PostCapturePopup : Window
         Loaded += (_, _) =>
         {
             var wa = SystemParameters.WorkArea;
-            Left = wa.Right - ActualWidth - 16; Top = wa.Bottom - ActualHeight - 16;
+            Left = wa.Right - ActualWidth; Top = wa.Bottom - ActualHeight;
             _auto.Start();
         };
         Closed += (_, _) => _auto.Stop();
@@ -79,7 +79,7 @@ public sealed class PostCapturePopup : Window
             var bmp = new BitmapImage();
             bmp.BeginInit(); bmp.UriSource = new Uri(path); bmp.DecodePixelWidth = 320; bmp.CacheOption = BitmapCacheOption.OnLoad; bmp.EndInit();
             bmp.Freeze();
-            return new Image { Source = bmp, Width = 320, Margin = new Thickness(0, 0, 0, 6) };
+            return new Border { CornerRadius = new CornerRadius(8), ClipToBounds = true, Margin = new Thickness(0, 0, 0, 8), Child = new Image { Source = bmp, Width = 320, Stretch = Stretch.Uniform } };
         }
         catch (Exception) { return null; } // e.g. WebP is not decodable by WPF: show no thumbnail
     }

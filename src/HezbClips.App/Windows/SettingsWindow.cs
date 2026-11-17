@@ -14,13 +14,14 @@ public sealed class SettingsWindow : Window
     readonly ComboBox _quality = new(), _imageFmt = new(), _mode = new(), _fps = new();
     readonly CheckBox _sys = new() { Content = "Thu âm thanh hệ thống" }, _mic = new() { Content = "Thu mic" }, _startup = new() { Content = "Khởi động cùng Windows" };
     readonly TextBox _dir = new(), _hkRegion = new(), _hkFull = new(), _hkRecord = new();
-    readonly TextBlock _error = new() { Foreground = Brushes.Firebrick, TextWrapping = TextWrapping.Wrap };
+    readonly TextBlock _error = new() { Foreground = Ui.Brush("Danger"), TextWrapping = TextWrapping.Wrap };
 
     public SettingsWindow(AppSettings s, IReadOnlyList<HotkeyFailure> hotkeyFailures, Action<AppSettings> onSave, Action onRedetect)
     {
         _s = s;
         Title = "Hezb Clips — Cài đặt"; Width = 460; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Background = Ui.Brush("Bg"); Foreground = Ui.Brush("Text");
 
         _quality.ItemsSource = new[] { "1080p (Full HD)", "1440p (2K)", "2160p (4K)" };
         _quality.SelectedIndex = s.Quality switch { ExportQuality.P1440 => 1, ExportQuality.P2160 => 2, _ => 0 };
@@ -32,17 +33,19 @@ public sealed class SettingsWindow : Window
         foreach (var f in hotkeyFailures)
         {
             var box = f.Name switch { "RegionShot" => _hkRegion, "FullShot" => _hkFull, _ => _hkRecord };
-            box.BorderBrush = Brushes.Firebrick; box.ToolTip = "Phím tắt này đang bị chương trình khác chiếm. Hãy chọn tổ hợp khác.";
+            box.BorderBrush = Ui.Brush("Danger"); box.ToolTip = "Phím tắt này đang bị chương trình khác chiếm. Hãy chọn tổ hợp khác.";
             _error.Text += $"Phím tắt {f.Combo} bị chiếm. ";
         }
 
-        var panel = new StackPanel { Margin = new Thickness(16) };
-        void Row(string label, UIElement c) { panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 8, 0, 2), FontWeight = FontWeights.SemiBold }); panel.Children.Add(c); }
+        var panel = new StackPanel { Margin = new Thickness(20) };
+        panel.Children.Add(new TextBlock { Text = "Hezb Clips", FontSize = 20, FontWeight = FontWeights.Bold, Foreground = Ui.Brush("Text") });
+        panel.Children.Add(new TextBlock { Text = "Chụp và quay màn hình chất lượng cao", FontSize = 12, Foreground = Ui.Brush("TextDim"), Margin = new Thickness(0, 0, 0, 6) });
+        void Row(string label, UIElement c) { panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 12, 0, 4), FontWeight = FontWeights.SemiBold, FontSize = 12, Foreground = Ui.Brush("TextDim") }); panel.Children.Add(c); }
         Row("Chất lượng xuất", _quality);
         panel.Children.Add(new TextBlock
         {
             Text = "Upscale làm ảnh nét và mượt hơn, không thêm chi tiết gốc.",
-            Foreground = Brushes.Gray, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0)
+            Foreground = Ui.Brush("Disabled"), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0)
         });
         Row("Định dạng ảnh", _imageFmt);
         Row("Chế độ quay video", _mode);
@@ -56,10 +59,10 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(_startup); _startup.Margin = new Thickness(0, 10, 0, 0);
         panel.Children.Add(_error);
 
-        var redetect = new Button { Content = "Dò lại cấu hình máy", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 12, 8, 0) };
+        var redetect = new Button { Content = "Dò lại cấu hình máy", Padding = new Thickness(12, 7, 12, 7), Margin = new Thickness(0, 16, 8, 0) };
         redetect.Click += (_, _) => { onRedetect(); MessageBox.Show(this, "Đang dò lại cấu hình ở nền.", "Hezb Clips"); };
-        var save = new Button { Content = "Lưu", IsDefault = true, Padding = new Thickness(16, 4, 16, 4), Margin = new Thickness(0, 12, 8, 0) };
-        var cancel = new Button { Content = "Đóng", IsCancel = true, Padding = new Thickness(16, 4, 16, 4), Margin = new Thickness(0, 12, 0, 0) };
+        var save = new Button { Content = "Lưu", IsDefault = true, Style = Ui.Style("PrimaryButton"), Padding = new Thickness(20, 7, 20, 7), Margin = new Thickness(0, 16, 8, 0) };
+        var cancel = new Button { Content = "Đóng", IsCancel = true, Padding = new Thickness(16, 7, 16, 7), Margin = new Thickness(0, 16, 0, 0) };
         save.Click += (_, _) => { if (Apply()) { onSave(_s); Close(); } };
         var bar = new StackPanel { Orientation = Orientation.Horizontal };
         bar.Children.Add(redetect); bar.Children.Add(save); bar.Children.Add(cancel);

@@ -20,12 +20,13 @@ public sealed class RecordControlBar : Window
     const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
     const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
 
-    readonly ToggleButton _sys = new() { Content = "Âm thanh máy", Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(8, 3, 8, 3) };
-    readonly ToggleButton _mic = new() { Content = "Mic", Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(8, 3, 8, 3) };
-    readonly ComboBox _quality = new() { Margin = new Thickness(0, 0, 6, 0), Width = 70 };
-    readonly TextBlock _timer = new() { Text = "00:00", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 10, 0), FontFamily = new FontFamily("Consolas"), FontSize = 15 };
-    readonly Button _go = new() { Content = "Quay", Padding = new Thickness(14, 3, 14, 3), Background = Brushes.IndianRed, Foreground = Brushes.White };
-    readonly Button _cancel = new() { Content = "Hủy", Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
+    readonly ToggleButton _sys = new() { Content = "🔊 Âm thanh máy", Margin = new Thickness(0, 0, 6, 0) };
+    readonly ToggleButton _mic = new() { Content = "🎤 Mic", Margin = new Thickness(0, 0, 8, 0) };
+    readonly ComboBox _quality = new() { Margin = new Thickness(0, 0, 10, 0), Width = 76 };
+    readonly System.Windows.Shapes.Ellipse _dot = new() { Width = 9, Height = 9, Fill = Ui.Brush("Disabled"), VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock _timer = new() { Text = "00:00", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0), FontFamily = new FontFamily("Consolas"), FontSize = 15, Foreground = Ui.Brush("Text") };
+    readonly Button _go = new() { Content = "⏺ Quay", Padding = new Thickness(16, 6, 16, 6), Style = Ui.Style("DangerButton") };
+    readonly Button _cancel = new() { Content = "Hủy", Margin = new Thickness(6, 0, 0, 0) };
     readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly System.Drawing.Rectangle _region;
     DateTime _startedAt; bool _recording;
@@ -39,14 +40,14 @@ public sealed class RecordControlBar : Window
         _region = regionPhysical;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; Topmost = true; ShowInTaskbar = false;
         SizeToContent = SizeToContent.WidthAndHeight; ShowActivated = false;
-        Background = new SolidColorBrush(Color.FromRgb(32, 32, 36));
+        AllowsTransparency = true; Background = Brushes.Transparent;
         _sys.IsChecked = s.CaptureSystemAudio; _mic.IsChecked = s.CaptureMicrophone;
         _quality.Items.Add("1080p"); _quality.Items.Add("2K"); _quality.Items.Add("4K");
         _quality.SelectedIndex = s.Quality switch { ExportQuality.P1440 => 1, ExportQuality.P2160 => 2, _ => 0 };
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8) };
-        foreach (var c in new UIElement[] { _sys, _mic, _quality, _timer, _go, _cancel }) row.Children.Add(c);
-        Content = new Border { BorderBrush = Brushes.DimGray, BorderThickness = new Thickness(1), Child = row };
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var c in new UIElement[] { _sys, _mic, _quality, _dot, _timer, _go, _cancel }) row.Children.Add(c);
+        Content = Ui.Card(row, 10);
 
         _go.Click += (_, _) => OnGo();
         _cancel.Click += (_, _) => Cancelled?.Invoke();
@@ -62,7 +63,7 @@ public sealed class RecordControlBar : Window
         var a = (_sys.IsChecked == true ? AudioSources.System : 0) | (_mic.IsChecked == true ? AudioSources.Microphone : 0);
         _recording = true; _startedAt = DateTime.UtcNow; _tick.Start();
         _sys.IsEnabled = _mic.IsEnabled = _quality.IsEnabled = _cancel.IsEnabled = false;
-        _go.Content = "Dừng";
+        _go.Content = "⏹ Dừng"; _dot.Fill = Ui.Brush("Danger");
         RecordClicked?.Invoke(a, q);
     }
 
