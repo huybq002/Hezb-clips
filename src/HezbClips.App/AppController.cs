@@ -617,44 +617,28 @@ public sealed class AppController : IDisposable
     {
         var src = new WgcCaptureSource();
         var cursor = System.Windows.Forms.Cursor.Position;
-        using var firstFrame = src.CaptureRegion(region);
-        using var acc = new ScrollAccumulator(firstFrame);
         // browsers scroll about 100 DIP per wheel notch: aim for ~40 % of the region per step so frames overlap well
         var scale = WinNative.MonitorScale(region.X + region.Width / 2, region.Y + region.Height / 2);
         var notches = Math.Clamp((int)Math.Round(region.Height * 0.4 / (100.0 * scale)), 1, 10);
-        var misses = 0;
         try
         {
-            for (int i = 0; i < 200 && !_scrollCancel && acc.Height < 30000; i++)
+            var (result, steps, reason) = ScrollCapture.Run(
+                capture: () => src.CaptureRegion(region),
+                scroll: n => WinNative.ScrollDown(region.X + region.Width / 2, region.Y + region.Height / 2, n),
+                notches: notches, cancelled: () => _scrollCancel, sleep: ms => System.Threading.Thread.Sleep(ms),
+                scrollFallback: WinNative.PageDown);
+            using (result)
             {
-                WinNative.ScrollDown(region.X + region.Width / 2, region.Y + region.Height / 2, notches);
-                using var next = WaitForStill(src, region); // let smooth scrolling / lazy images settle
-                if (acc.Add(next)) { misses = 0; continue; }
-                // not moved or not aligned: retry a couple of times (slow pages) before calling it the end
-                if (++misses >= 3) break;
+                Directory.CreateDirectory(_s.OutputDir);
+                var path = HezbClips.Core.Output.FileNamer.Next(_s.OutputDir, "Scroll", "png", DateTime.Now, File.Exists);
+                SixLabors.ImageSharp.ImageExtensions.SaveAsPng(result, path);
+                _app.Dispatcher.BeginInvoke(() => Toast.Show(reason == "trang không cuộn"
+                    ? "Vùng này không cuộn được. Hãy chọn vùng nội dung của trang (không gồm thanh địa chỉ) rồi thử lại."
+                    : $"Đã chụp {result.Height} px ({reason})"));
+                return path;
             }
-            using var result = acc.Build();
-            Directory.CreateDirectory(_s.OutputDir);
-            var path = HezbClips.Core.Output.FileNamer.Next(_s.OutputDir, "Scroll", "png", DateTime.Now, File.Exists);
-            SixLabors.ImageSharp.ImageExtensions.SaveAsPng(result, path);
-            return path;
         }
         finally { System.Windows.Forms.Cursor.Position = cursor; }
-    }
-
-    /// <summary>Capture until two frames in a row are identical (scroll animation finished), at most ~1.5 s.</summary>
-    static SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> WaitForStill(WgcCaptureSource src, System.Drawing.Rectangle region)
-    {
-        System.Threading.Thread.Sleep(250);
-        var prev = src.CaptureRegion(region);
-        for (int i = 0; i < 6; i++)
-        {
-            System.Threading.Thread.Sleep(200);
-            var cur = src.CaptureRegion(region);
-            if (ScrollStitcher.FindShift(prev, cur) == 0) { prev.Dispose(); return cur; }
-            prev.Dispose(); prev = cur;
-        }
-        return prev;
     }
 
     void CleanupLibrary()

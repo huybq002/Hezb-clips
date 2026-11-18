@@ -20,7 +20,9 @@ public static class ScrollStitcher
     /// <summary>How many rows the content moved up between prev and next: 0 = identical (end of page), NoMatch = could not align.</summary>
     public static int FindShift(Image<Rgba32> prev, Image<Rgba32> next) => Align(prev, next).Shift;
 
-    public static ScrollStep Align(Image<Rgba32> prev, Image<Rgba32> next)
+    /// <param name="hint">Shift of the previous step. Wheel scrolling moves the same distance every time, so when the
+    /// frames are ambiguous (repeated text, blank areas) a shift close to the hint is trusted.</param>
+    public static ScrollStep Align(Image<Rgba32> prev, Image<Rgba32> next, int? hint = null)
     {
         if (prev.Width != next.Width || prev.Height != next.Height) return new(NoMatch, 0, 0);
         var a = Luma(prev); var b = Luma(next);
@@ -32,8 +34,20 @@ public static class ScrollStitcher
         if (top + bottom >= h - 8 || MeanDiff(a, b, 0, 0, h) <= 1.0) return new(0, top, bottom);
 
         int band = h - top - bottom;
-        int lo = Math.Max(2, band / 40), hi = band - Math.Max(12, band / 12);
+        // small shifts must be allowed: the very last scroll of a page often moves only a few pixels
+        int lo = 2, hi = band - Math.Max(12, band / 12);
         if (hi <= lo) return new(NoMatch, top, bottom);
+
+        if (hint is { } hs && hs >= lo && hs <= hi)
+        {
+            var hb = NoMatch; var hd = double.MaxValue;
+            for (int s = Math.Max(lo, hs - 3); s <= Math.Min(hi, hs + 3); s++)
+            {
+                var d = MeanDiff(a, b, top + s, top, band - s);
+                if (d < hd) { hd = d; hb = s; }
+            }
+            if (hd <= MaxDiff) return new(hb, top, bottom); // clear match right where the last scroll predicts
+        }
         var diffs = new double[hi + 1];
         var best = NoMatch; var bestDiff = double.MaxValue;
         for (int s = lo; s <= hi; s++)
@@ -115,7 +129,7 @@ public static class ScrollStitcher
     {
         using var acc = new ScrollAccumulator(frames[0]);
         int used = 1;
-        for (int i = 1; i < frames.Count && acc.Add(frames[i]); i++) used++;
+        for (int i = 1; i < frames.Count && acc.Add(frames[i]) == AddResult.Added; i++) used++;
         return (acc.Build(), used);
     }
 }
@@ -123,6 +137,8 @@ public static class ScrollStitcher
 /// <summary>Builds the tall image step by step, keeping only the newly revealed rows of each frame in memory.
 /// The bottom static band (sticky footer) found in the first step is kept fixed so the strips stay contiguous,
 /// and is added back once at the very end; a sticky header only ever comes from the first frame.</summary>
+public enum AddResult { Added, Identical, NoMatch }
+
 public sealed class ScrollAccumulator : IDisposable
 {
     readonly Image<Rgba32> _first;
@@ -135,18 +151,26 @@ public sealed class ScrollAccumulator : IDisposable
     /// <summary>Total height so far.</summary>
     public int Height { get; private set; }
 
-    /// <summary>Add the next frame. False when it is the end of the page or could not be aligned (frame not used).</summary>
-    public bool Add(Image<Rgba32> next)
+    /// <summary>The frame the next one is matched against (for diagnostics).</summary>
+    public Image<Rgba32> LastFrame => _last;
+
+    /// <summary>Shift of the last added frame (the hint for the next one).</summary>
+    public int? LastShift { get; private set; }
+
+    /// <summary>Add the next frame. Identical = nothing moved (end of page, or the scroll has not happened yet);
+    /// NoMatch = could not align (the frame is not used and the previous frame stays the reference).</summary>
+    public AddResult Add(Image<Rgba32> next)
     {
-        var step = ScrollStitcher.Align(_last, next);
-        if (step.Shift <= 0) return false;
+        var step = ScrollStitcher.Align(_last, next, LastShift);
+        if (step.Shift == 0) return AddResult.Identical;
+        if (step.Shift < 0) return AddResult.NoMatch;
         _bottom ??= step.Bottom;
         var h = next.Height; var b = _bottom.Value; var s = step.Shift;
-        if (h - b - s < 0) return false;
+        if (h - b - s < 0) return AddResult.NoMatch;
         _strips.Add(ScrollStitcher.Rows(next, h - b - s, s));
         _last.Dispose(); _last = next.Clone();
-        Height += s;
-        return true;
+        Height += s; LastShift = s;
+        return AddResult.Added;
     }
 
     public Image<Rgba32> Build()

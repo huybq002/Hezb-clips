@@ -55,9 +55,11 @@ public static class RegionSelector
         readonly System.Drawing.Rectangle _bounds;
         readonly Action<System.Drawing.Rectangle?> _finish;
         readonly Canvas _canvas = new();
-        readonly Rectangle _sel = new() { Stroke = Ui.Brush("Accent"), StrokeThickness = 2, RadiusX = 2, RadiusY = 2, Fill = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255)), Visibility = Visibility.Collapsed };
+        // dark veil over everything EXCEPT the region being picked, so the chosen area stays bright and clear
+        readonly System.Windows.Shapes.Path _dim = new() { Fill = new SolidColorBrush(Color.FromArgb(140, 12, 14, 22)), IsHitTestVisible = false };
+        readonly Rectangle _sel = new() { Stroke = Ui.Brush("Accent"), StrokeThickness = 2, RadiusX = 2, RadiusY = 2, Fill = Brushes.Transparent, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
         readonly TextBlock _label = new() { Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromArgb(220, 27, 28, 34)), FontSize = 12, FontFamily = new FontFamily("Consolas"), Padding = new Thickness(8, 3, 8, 3), Visibility = Visibility.Collapsed };
-        readonly Rectangle _hover = new() { Stroke = Ui.Brush("Accent"), StrokeThickness = 2, RadiusX = 3, RadiusY = 3, Fill = new SolidColorBrush(Color.FromArgb(55, 76, 141, 255)), Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+        readonly Rectangle _hover = new() { Stroke = Ui.Brush("Accent"), StrokeThickness = 2, RadiusX = 3, RadiusY = 3, Fill = Brushes.Transparent, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
         readonly HashSet<IntPtr> _ignore;
         System.Drawing.Rectangle? _hoverPhysical;
         Point _start; bool _dragging, _moved;
@@ -66,25 +68,37 @@ public static class RegionSelector
         {
             _bounds = bounds; _finish = finish; _ignore = ignore;
             WindowStyle = WindowStyle.None; AllowsTransparency = true; ResizeMode = ResizeMode.NoResize;
-            Background = new SolidColorBrush(Color.FromArgb(90, 0, 0, 0));
+            Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)); // nearly invisible, but still receives the mouse
             Topmost = true; ShowInTaskbar = false; Cursor = Cursors.Cross;
             WindowStartupLocation = WindowStartupLocation.Manual;
-            _canvas.Children.Add(_hover); _canvas.Children.Add(_sel); _canvas.Children.Add(_label);
-            if (frozen is null) Content = _canvas;
-            else
+            _canvas.Children.Add(_dim); _canvas.Children.Add(_hover); _canvas.Children.Add(_sel); _canvas.Children.Add(_label);
+            Content = _canvas;
+            if (frozen is not null)
             {
-                // frozen screen underneath, the usual dim on top of it
+                // frozen screen underneath the veil
                 Background = new ImageBrush(frozen) { Stretch = Stretch.Fill };
                 RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.NearestNeighbor);
-                var root = new Grid();
-                root.Children.Add(new Rectangle { Fill = new SolidColorBrush(Color.FromArgb(90, 0, 0, 0)), IsHitTestVisible = false });
-                root.Children.Add(_canvas);
-                Content = root;
             }
             SourceInitialized += (_, _) => Place();
-            Loaded += (_, _) => Place();
+            Loaded += (_, _) => { Place(); UpdateDim(null); };
+            _canvas.SizeChanged += (_, _) => UpdateDim(_dimHole); // re-cut the veil whenever the real size is known
             MouseLeftButtonDown += OnDown; MouseMove += OnMove; MouseLeftButtonUp += OnUp;
             KeyDown += (_, e) => { if (e.Key == Key.Escape) _finish(null); };
+        }
+
+        Rect? _dimHole;
+
+        /// <summary>Veil over the whole screen with a hole for the area being picked (null = no hole).</summary>
+        void UpdateDim(Rect? hole)
+        {
+            _dimHole = hole;
+            var cw = _canvas.ActualWidth > 1 ? _canvas.ActualWidth : _bounds.Width / Scale;
+            var ch = _canvas.ActualHeight > 1 ? _canvas.ActualHeight : _bounds.Height / Scale;
+            var full = new Rect(0, 0, cw, ch);
+            var g = new GeometryGroup { FillRule = FillRule.EvenOdd };
+            g.Children.Add(new RectangleGeometry(full));
+            if (hole is { } h) { var i = Rect.Intersect(full, h); if (!i.IsEmpty) g.Children.Add(new RectangleGeometry(i)); }
+            _dim.Data = g;
         }
 
         void Place()
@@ -107,12 +121,13 @@ public static class RegionSelector
             var phys = DpiMath.ToPhysical(dip.X, dip.Y, 0, 0, Scale);
             var pt = new System.Drawing.Point(_bounds.X + phys.X, _bounds.Y + phys.Y);
             _hoverPhysical = WindowFinder.FromPoint(pt, _ignore);
-            if (_hoverPhysical is not { } r) { _hover.Visibility = Visibility.Collapsed; return; }
+            if (_hoverPhysical is not { } r) { _hover.Visibility = Visibility.Collapsed; UpdateDim(null); return; }
             var vis = System.Drawing.Rectangle.Intersect(r, _bounds);
-            if (vis.IsEmpty) { _hover.Visibility = Visibility.Collapsed; _hoverPhysical = null; return; }
+            if (vis.IsEmpty) { _hover.Visibility = Visibility.Collapsed; _hoverPhysical = null; UpdateDim(null); return; }
             Canvas.SetLeft(_hover, (vis.X - _bounds.X) / Scale); Canvas.SetTop(_hover, (vis.Y - _bounds.Y) / Scale);
             _hover.Width = vis.Width / Scale; _hover.Height = vis.Height / Scale;
             _hover.Visibility = Visibility.Visible;
+            UpdateDim(new Rect((vis.X - _bounds.X) / Scale, (vis.Y - _bounds.Y) / Scale, vis.Width / Scale, vis.Height / Scale)); // detected window stays bright
         }
 
         void OnMove(object s, MouseEventArgs e)
@@ -127,6 +142,7 @@ public static class RegionSelector
             if (!_moved) return;
             var r = Current(cur);
             Canvas.SetLeft(_sel, r.X); Canvas.SetTop(_sel, r.Y); _sel.Width = r.Width; _sel.Height = r.Height;
+            UpdateDim(r); // everything outside the dragged rectangle gets darker
             Canvas.SetLeft(_label, r.X); Canvas.SetTop(_label, Math.Max(0, r.Y - 22));
             _label.Text = $"{Math.Round(r.Width * Scale)} x {Math.Round(r.Height * Scale)}";
         }
@@ -143,7 +159,7 @@ public static class RegionSelector
             }
             var r = Current(e.GetPosition(_canvas));
             var phys = DpiMath.ToPhysical(r.X, r.Y, r.Width, r.Height, Scale);
-            if (phys.Width < 16 || phys.Height < 16) { _sel.Visibility = _label.Visibility = Visibility.Collapsed; return; }
+            if (phys.Width < 16 || phys.Height < 16) { _sel.Visibility = _label.Visibility = Visibility.Collapsed; UpdateDim(null); return; }
             _finish(new System.Drawing.Rectangle(_bounds.X + phys.X, _bounds.Y + phys.Y, phys.Width, phys.Height));
         }
     }

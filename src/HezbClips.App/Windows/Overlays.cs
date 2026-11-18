@@ -42,6 +42,15 @@ static class WinNative
         for (int i = 0; i < notches; i++) mouse_event(0x0800 /*MOUSEEVENTF_WHEEL*/, 0, 0, unchecked((uint)-120), UIntPtr.Zero);
     }
 
+    [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+
+    /// <summary>Press Page Down in whatever window has focus.</summary>
+    public static void PageDown()
+    {
+        keybd_event(0x22, 0, 0, UIntPtr.Zero);
+        keybd_event(0x22, 0, 2 /*KEYUP*/, UIntPtr.Zero);
+    }
+
     /// <summary>Hide the window from screenshots and recordings.</summary>
     public static void ExcludeFromCapture(Window w) => SetWindowDisplayAffinity(new WindowInteropHelper(w).EnsureHandle(), WDA_EXCLUDEFROMCAPTURE);
 
