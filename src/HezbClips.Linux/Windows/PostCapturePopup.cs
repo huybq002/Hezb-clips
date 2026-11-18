@@ -11,7 +11,7 @@ public class PostCapturePopup : Window
     readonly TextBlock _status = new() { Opacity = .7, Margin = new Thickness(0, 2, 0, 8) };
     readonly DispatcherTimer _auto = new() { Interval = TimeSpan.FromSeconds(8) };
 
-    public PostCapturePopup(string path, bool copied)
+    public PostCapturePopup(string path, bool copied, bool isVideo = false)
     {
         _path = path;
         Title = "Hezb Clips";
@@ -20,7 +20,7 @@ public class PostCapturePopup : Window
         SizeToContent = SizeToContent.WidthAndHeight;
         _status.Text = copied ? "Đã lưu và copy" : "Đã lưu";
 
-        var copy = new Button { Content = "Copy" }; copy.Click += (_, _) => Copy();
+        var copy = new Button { Content = "Copy", IsVisible = !isVideo }; copy.Click += (_, _) => Copy();
         var open = new Button { Content = "Mở thư mục" }; open.Click += (_, _) => ClipboardTool.OpenFolder(_path);
         var del = new Button { Content = "Xóa" }; del.Click += (_, _) => Delete();
         var close = new Button { Content = "✕" }; close.Click += (_, _) => Close();

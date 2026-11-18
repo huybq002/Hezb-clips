@@ -10,7 +10,7 @@ public class MainWindow : Window
     readonly TextBlock _hk = new() { Opacity = .7, TextWrapping = Avalonia.Media.TextWrapping.Wrap, IsVisible = false };
     readonly Button _install = new() { Content = "Cài phím tắt GNOME", HorizontalAlignment = HorizontalAlignment.Stretch, IsVisible = false };
 
-    public MainWindow(Action region, Action full, Action folder, Action settings, Action installShortcuts)
+    public MainWindow(Action region, Action full, Action folder, Action settings, Action installShortcuts, Action recordRegion, Action recordFull)
     {
         _install.Click += (_, _) => installShortcuts();
         Title = "Hezb Clips";
@@ -21,7 +21,7 @@ public class MainWindow : Window
         Content = new StackPanel
         {
             Margin = new Thickness(16), Spacing = 8,
-            Children = { B("Chụp vùng", region), B("Chụp toàn màn hình", full), B("Mở thư mục ảnh", folder), B("Cài đặt", settings), _hk, _install },
+            Children = { B("Chụp vùng", region), B("Chụp toàn màn hình", full), B("Quay vùng", recordRegion), B("Quay toàn màn hình", recordFull), B("Mở thư mục", folder), B("Cài đặt", settings), _hk, _install },
         };
     }
 
