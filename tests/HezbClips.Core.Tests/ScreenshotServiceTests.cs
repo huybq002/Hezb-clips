@@ -21,9 +21,10 @@ public class ScreenshotServiceTests
     [Fact] public void Collision_adds_suffix()
     {
         var now = new DateTime(2026, 11, 16, 9, 30, 0);
-        var first = @"D:\o\Clip_20261116_093000.png";
-        var r = FileNamer.Next(@"D:\o", "Clip", "png", now, f => f == first);
-        Assert.Equal(@"D:\o\Clip_20261116_093000_1.png", r);
+        var dir = Path.Combine("o", "dir");
+        var first = Path.Combine(dir, "Clip_20261116_093000.png");
+        var r = FileNamer.Next(dir, "Clip", "png", now, f => f == first);
+        Assert.Equal(Path.Combine(dir, "Clip_20261116_093000_1.png"), r);
     }
 
     [Fact] public async Task Region_shot_saved_at_export_size()

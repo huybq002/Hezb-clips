@@ -14,10 +14,10 @@ public class LibraryMetaTests
     {
         var p = Tmp();
         var a = new LibraryMetaStore(p);
-        Assert.True(a.ToggleStar(@"C:\x\one.png"));
-        a.SetTags(@"C:\x\one.png", LibraryMetaStore.ParseTags("#bug, ui  login"));
+        Assert.True(a.ToggleStar(Path.Combine("x", "one.png")));
+        a.SetTags(Path.Combine("x", "one.png"), LibraryMetaStore.ParseTags("#bug, ui  login"));
         var b = new LibraryMetaStore(p);
-        Assert.True(b.IsStarred(@"D:\other\one.png")); // keyed by file name
+        Assert.True(b.IsStarred(Path.Combine("other", "one.png"))); // keyed by file name
         Assert.Equal(new[] { "bug", "ui", "login" }, b.Get("one.png").Tags);
         File.Delete(p);
     }
