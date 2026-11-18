@@ -153,3 +153,27 @@ public class ScrollAmbiguityTests
         Assert.True(ScrollStitcher.FindShift(a, b) <= 0);
     }
 }
+
+public class FrozenComposerTests
+{
+    [Fact] public void Region_across_two_monitors_takes_both_halves()
+    {
+        using var left = new Image<Rgba32>(100, 50, new Rgba32(255, 0, 0, 255));
+        using var right = new Image<Rgba32>(100, 50, new Rgba32(0, 0, 255, 255));
+        var screens = new Dictionary<System.Drawing.Rectangle, Image<Rgba32>>
+        {
+            [new System.Drawing.Rectangle(0, 0, 100, 50)] = left, [new System.Drawing.Rectangle(100, 0, 100, 50)] = right,
+        };
+        using var img = HezbClips.Core.Imaging.FrozenComposer.Compose(screens, new System.Drawing.Rectangle(80, 10, 40, 20))!;
+        Assert.Equal(40, img.Width); Assert.Equal(20, img.Height);
+        Assert.Equal(new Rgba32(255, 0, 0, 255), img[5, 5]);
+        Assert.Equal(new Rgba32(0, 0, 255, 255), img[35, 5]);
+    }
+
+    [Fact] public void Region_off_screen_is_null()
+    {
+        using var a = new Image<Rgba32>(10, 10);
+        var screens = new Dictionary<System.Drawing.Rectangle, Image<Rgba32>> { [new System.Drawing.Rectangle(0, 0, 10, 10)] = a };
+        Assert.Null(HezbClips.Core.Imaging.FrozenComposer.Compose(screens, new System.Drawing.Rectangle(50, 50, 5, 5)));
+    }
+}

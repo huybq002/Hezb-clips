@@ -22,9 +22,13 @@ public sealed class MainWindow : Window
     readonly Button _gear = new() { Content = Ui.Glyph("\uE713", 16), ToolTip = "Cài đặt", Style = Ui.Style("IconButton") };
     readonly TextBlock _title = new() { FontSize = 20, FontWeight = FontWeights.Bold, Foreground = Ui.Brush("Text"), VerticalAlignment = VerticalAlignment.Center };
     bool _inSettings;
+    readonly StackPanel _actions = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 10, 0) };
+    readonly WrapPanel _tools = new() { Margin = new Thickness(20, 0, 20, 10) };
+    readonly MainActions _a;
 
-    public MainWindow(AppSettings s, string? ffmpeg, string dataDir, IReadOnlyList<HotkeyFailure> failures, MainActions a, Func<AppSettings, UIElement>? advanced = null)
+    public MainWindow(AppSettings s, string? ffmpeg, string dataDir, IReadOnlyList<HotkeyFailure> failures, MainActions a, Func<AppSettings, Action<Action>, UIElement>? advanced = null)
     {
+        _a = a;
         Title = "Hezb Clips"; Width = 1040; Height = 700; MinWidth = 760; MinHeight = 480;
         Icon = Ui.Logo("logo-light.png", 64); Background = Ui.Brush("Bg"); WindowStartupLocation = WindowStartupLocation.CenterScreen;
         _library = new LibraryView(s.OutputDir, ffmpeg, dataDir, a.Edit, a.PinFile);
@@ -40,21 +44,12 @@ public sealed class MainWindow : Window
         _gear.Click += (_, _) => { if (_inSettings) ShowLibrary(); else ShowSettings(); };
         DockPanel.SetDock(_gear, Dock.Right); header.Children.Add(_gear);
 
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 10, 0) };
-        actions.Children.Add(Action("\uE7A8", "Chụp vùng", s.HotkeyRegionShot, a.Region, primary: true));
-        actions.Children.Add(Action("\uE7F4", "Toàn màn hình", s.HotkeyFullShot, a.Full));
-        actions.Children.Add(Action("\uE7C8", "Quay video", s.HotkeyRecord, a.Record));
-        actions.Children.Add(Action("GIF", "Quay GIF", s.HotkeyGif, a.Gif));
-        DockPanel.SetDock(actions, Dock.Right); header.Children.Add(actions);
+        DockPanel.SetDock(_actions, Dock.Right); header.Children.Add(_actions);
         header.Children.Add(new Border()); // fills the gap
 
         // second row: the other capture functions, each with its own hotkey
-        var tools = new WrapPanel { Margin = new Thickness(20, 0, 20, 10) };
-        tools.Children.Add(new TextBlock { Text = "Công cụ nhanh", Foreground = Ui.Brush("TextDim"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 4) });
-        tools.Children.Add(Chip("\uE8A7", "Cửa sổ", "Chụp cửa sổ đang focus", s.HotkeyWindowShot, a.Window));
-        tools.Children.Add(Chip("\uE916", "Chụp trễ", $"Đếm ngược {s.DelaySeconds} giây rồi chụp toàn màn hình", s.HotkeyDelayShot, a.Delay));
-        tools.Children.Add(Chip("\uE718", "Chụp & ghim", "Chụp vùng và ghim lên màn hình", s.HotkeyPinShot, a.Pin));
-        tools.Children.Add(Chip("\uE70D", "Cuộn trang", "Chụp trang dài bằng cách tự cuộn", s.HotkeyScroll, a.Scroll));
+        var tools = _tools;
+        UpdateHotkeys(s);
 
         var root = new DockPanel();
         DockPanel.SetDock(header, Dock.Top); root.Children.Add(header);
@@ -70,6 +65,22 @@ public sealed class MainWindow : Window
         };
         Activated += (_, _) => { if (!_inSettings) _library.Reload(); };
         ShowLibrary();
+    }
+
+    /// <summary>Rebuild the capture buttons so their hotkey labels match the saved settings.</summary>
+    public void UpdateHotkeys(AppSettings s)
+    {
+        _actions.Children.Clear();
+        _actions.Children.Add(Action("\uE7A8", "Chụp vùng", s.HotkeyRegionShot, _a.Region, primary: true));
+        _actions.Children.Add(Action("\uE7F4", "Toàn màn hình", s.HotkeyFullShot, _a.Full));
+        _actions.Children.Add(Action("\uE7C8", "Quay video", s.HotkeyRecord, _a.Record));
+        _actions.Children.Add(Action("GIF", "Quay GIF", s.HotkeyGif, _a.Gif));
+        _tools.Children.Clear();
+        _tools.Children.Add(new TextBlock { Text = "Công cụ nhanh", Foreground = Ui.Brush("TextDim"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 4) });
+        _tools.Children.Add(Chip("\uE8A7", "Cửa sổ", "Chụp cửa sổ đang focus", s.HotkeyWindowShot, _a.Window));
+        _tools.Children.Add(Chip("\uE916", "Chụp trễ", $"Đếm ngược {s.DelaySeconds} giây rồi chụp toàn màn hình", s.HotkeyDelayShot, _a.Delay));
+        _tools.Children.Add(Chip("\uE718", "Chụp & ghim", "Chụp vùng và ghim lên màn hình", s.HotkeyPinShot, _a.Pin));
+        _tools.Children.Add(Chip("\uE70D", "Cuộn trang", "Chụp trang dài bằng cách tự cuộn", s.HotkeyScroll, _a.Scroll));
     }
 
     static Button Chip(string icon, string text, string tip, string hotkey, Action click)

@@ -24,9 +24,18 @@ public class ToolInstaller(HttpClient http)
             var exe = Directory.EnumerateFiles(staging, RealEsrganExe, SearchOption.AllDirectories).FirstOrDefault()
                 ?? throw new InvalidDataException("Gói tải về không chứa " + RealEsrganExe);
             var root = Path.GetDirectoryName(exe)!;
-            if (Directory.Exists(dest)) Directory.Delete(dest, true);
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            Directory.Move(root, dest);
+            // swap folders: if the old exe is busy (an upscale is running) the rename fails and the old install stays intact
+            var old = dest + ".old";
+            if (Directory.Exists(old)) Directory.Delete(old, true);
+            if (Directory.Exists(dest))
+            {
+                try { Directory.Move(dest, old); }
+                catch (IOException) { throw new IOException("Real-ESRGAN đang được dùng (đang upscale). Hãy thử lại khi upscale xong."); }
+            }
+            try { Directory.Move(root, dest); }
+            catch { if (Directory.Exists(old) && !Directory.Exists(dest)) Directory.Move(old, dest); throw; }
+            try { if (Directory.Exists(old)) Directory.Delete(old, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             if (Directory.Exists(staging)) Directory.Delete(staging, true);
             return Path.Combine(dest, RealEsrganExe);
         }

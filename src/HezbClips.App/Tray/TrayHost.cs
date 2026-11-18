@@ -22,7 +22,9 @@ public sealed class TrayHost : IDisposable
         menu.Items.Add("Thoát", null, (_, _) => exit());
         _icon = new NotifyIcon { Icon = LoadIcon(), Text = "Hezb Clips", ContextMenuStrip = menu, Visible = true };
         _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) library(); };
-        _icon.BalloonTipClicked += (_, _) => _balloonClick?.Invoke();
+        // a click on an old balloon must not run the newest balloon's action
+        _icon.BalloonTipClicked += (_, _) => { var act = _balloonClick; _balloonClick = null; act?.Invoke(); };
+        _icon.BalloonTipClosed += (_, _) => _balloonClick = null;
     }
 
     static Icon LoadIcon()

@@ -24,7 +24,7 @@ public sealed class SettingsView : Grid
         _editAfter = new() { Content = "Tự mở trình chỉnh sửa ngay sau khi chụp ảnh" },
         _autoCopy = new() { Content = "Tự copy ảnh vào clipboard sau mỗi lần chụp" },
         _clicks = new() { Content = "Hiện vòng tròn khi bấm chuột" }, _keys = new() { Content = "Hiện phím bấm" }, _cam = new() { Content = "Hiện webcam ở góc vùng quay" };
-    readonly TextBox _dir = new(), _feed = new();
+    readonly TextBox _dir = new();
     readonly Dictionary<string, TextBox> _editorKeys = new();
     readonly Dictionary<string, TextBox> _hotkeys = new();
     readonly TextBlock _error = new() { Foreground = Ui.Brush("Danger"), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
@@ -32,7 +32,6 @@ public sealed class SettingsView : Grid
     readonly List<(string Name, ToggleButton Btn, Func<UIElement> Build)> _sections = new();
     readonly Dictionary<string, UIElement> _built = new();
     Action? _extraApply;
-    readonly Func<Panel, UIElement>? _extraPage;
 
     static readonly Dictionary<string, string> ToolLabels = new()
     {
@@ -58,7 +57,7 @@ public sealed class SettingsView : Grid
 
     /// <param name="extraPage">Optional extra "Nâng cao" page (updates, AI upscaler) built by the host.</param>
     public SettingsView(AppSettings s, IReadOnlyList<HotkeyFailure> hotkeyFailures, Action<AppSettings> onSave, Action onRedetect, Action<AppTheme> onTheme,
-        Func<AppSettings, UIElement>? extraPage = null)
+        Func<AppSettings, Action<Action>, UIElement>? extraPage = null)
     {
         _s = s; _onSave = onSave; _onRedetect = onRedetect; _onTheme = onTheme;
 
@@ -78,7 +77,7 @@ public sealed class SettingsView : Grid
         _sys.IsChecked = s.CaptureSystemAudio; _mic.IsChecked = s.CaptureMicrophone; _startup.IsChecked = s.StartWithWindows;
         _editAfter.IsChecked = s.OpenEditorAfterCapture; _autoCopy.IsChecked = s.AutoCopyAfterCapture;
         _clicks.IsChecked = s.ShowClicks; _keys.IsChecked = s.ShowKeys; _cam.IsChecked = s.Webcam;
-        _dir.Text = s.OutputDir; _feed.Text = s.UpdateFeedUrl;
+        _dir.Text = s.OutputDir;
         foreach (var tool in EditorShortcuts.Tools)
             _editorKeys[tool] = new TextBox { Width = 38, MaxLength = 1, TextAlignment = TextAlignment.Center, FontWeight = FontWeights.Bold };
         foreach (var h in Hk) _hotkeys[h.Name] = new TextBox();
@@ -105,7 +104,7 @@ public sealed class SettingsView : Grid
         Section("\uE714", "Video & âm thanh", BuildVideo);
         Section("\uE765", "Phím tắt", BuildShortcuts);
         Section("\uE8B7", "Lưu trữ", BuildStorage);
-        if (extraPage is not null) Section("\uE90F", "Nâng cao", () => extraPage(_s));
+        if (extraPage is not null) Section("\uE90F", "Nâng cao", () => extraPage(_s, apply => _extraApply += apply));
         SetColumn(nav, 0); Children.Add(nav);
 
         var right = new DockPanel();

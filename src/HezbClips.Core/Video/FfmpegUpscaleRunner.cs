@@ -13,7 +13,7 @@ public class FfmpegUpscaleRunner(HardwareProfile p, string ffmpeg, string? realE
         progress.Report(0);
         var (sw, sh, fps) = await ProbeAsync(job.InputPath, ct);
         var downscale = sw >= job.Target.W && sh >= job.Target.H;
-        var useAi = !downscale && p.VulkanAvailable && realEsrganExe is not null && File.Exists(realEsrganExe);
+        var useAi = !downscale && p.VulkanAvailable && realEsrganExe is not null && File.Exists(realEsrganExe) && EnoughTempSpace(job.InputPath);
         var tmpOut = job.OutputPath + ".part.mp4";
         try
         {
@@ -30,6 +30,19 @@ public class FfmpegUpscaleRunner(HardwareProfile p, string ffmpeg, string? realE
             progress.Report(1);
         }
         finally { try { if (File.Exists(tmpOut)) File.Delete(tmpOut); } catch (IOException) { } }
+    }
+
+    /// <summary>The AI path writes every frame as PNG (large): only use it with plenty of free space in %TEMP%
+    /// (about 400x the compressed clip, at least 20 GB free). Otherwise Lanczos is used.</summary>
+    static bool EnoughTempSpace(string input)
+    {
+        try
+        {
+            var free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(Path.GetTempPath()))!).AvailableFreeSpace;
+            var need = Math.Max(20L << 30, new FileInfo(input).Length * 400);
+            return free > need;
+        }
+        catch (Exception) { return false; }
     }
 
     async Task AiPathAsync(UpscaleJob job, double fps, int factor, string tmpOut, IProgress<double> progress, CancellationToken ct)

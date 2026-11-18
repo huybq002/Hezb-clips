@@ -20,7 +20,8 @@ public sealed record AdvancedHost(
 /// <summary>Settings page: AI upscaler download and app updates.</summary>
 public static class AdvancedPage
 {
-    public static UIElement Build(AppSettings s, AdvancedHost host)
+    /// <param name="onApply">Registers what to copy into the settings when the user presses "Lưu thay đổi".</param>
+    public static UIElement Build(AppSettings s, Action<Action> onApply, AdvancedHost host)
     {
         var p = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
         TextBlock T(string text, double size, bool bold = false, bool dim = false, double top = 0) => new()
@@ -62,13 +63,13 @@ public static class AdvancedPage
         p.Children.Add(T($"Phiên bản hiện tại: {host.CurrentVersion}", 13, top: 8));
         p.Children.Add(T("Địa chỉ feed cập nhật (https)", 12, dim: true, top: 12));
         var feed = new TextBox { Text = s.UpdateFeedUrl, Margin = new Thickness(0, 4, 0, 0) };
-        feed.TextChanged += (_, _) => s.UpdateFeedUrl = feed.Text.Trim();
         p.Children.Add(feed);
         p.Children.Add(T("Feed là một file JSON dạng {\"version\":\"1.2.0\",\"url\":\"https://…/HezbClips.zip\",\"notes\":\"…\",\"sha256\":\"tùy chọn\"}. Nhớ bấm \"Lưu thay đổi\" để giữ địa chỉ.", 12, dim: true, top: 6));
 
         var auto = new CheckBox { Content = "Tự kiểm tra khi mở ứng dụng", IsChecked = s.AutoCheckUpdates, Margin = new Thickness(0, 10, 0, 0) };
-        auto.Click += (_, _) => s.AutoCheckUpdates = auto.IsChecked == true;
         p.Children.Add(auto);
+        // nothing here touches the settings until "Lưu thay đổi"
+        onApply(() => { s.UpdateFeedUrl = feed.Text.Trim(); s.AutoCheckUpdates = auto.IsChecked == true; });
         var status = T("", 13, top: 10);
         var check = new Button { Content = "Kiểm tra cập nhật", Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(14, 7, 14, 7) };
         var download = new Button { Content = "Tải bản mới", Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(14, 7, 14, 7), Style = Ui.Style("PrimaryButton"), Visibility = Visibility.Collapsed };
@@ -94,7 +95,14 @@ public static class AdvancedPage
             {
                 var file = await host.DownloadUpdate(found, new Progress<double>(v => dlBar.Value = v));
                 status.Text = "✓ Đã tải xong: " + file;
-                if (Path.GetExtension(file).ToLowerInvariant() is ".exe" or ".msi")
+                var runnable = Path.GetExtension(file).ToLowerInvariant() is ".exe" or ".msi";
+                if (runnable && string.IsNullOrWhiteSpace(found.Sha256))
+                {
+                    // without a checksum we cannot tell the file is the one the feed meant: never run it automatically
+                    status.Text = "Đã tải: " + file + ". Feed không có mã SHA-256 nên ứng dụng không tự chạy file này; hãy kiểm tra trước khi mở.";
+                    Process.Start("explorer.exe", $"/select,\"{file}\"");
+                }
+                else if (runnable)
                 {
                     if (MessageBox.Show(Window.GetWindow(p), "Chạy trình cài đặt vừa tải ngay bây giờ?\nỨng dụng sẽ đóng để cập nhật.", "Hezb Clips", MessageBoxButton.OKCancel) == MessageBoxResult.OK)
                     { Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); Application.Current.Shutdown(); }

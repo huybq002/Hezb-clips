@@ -205,15 +205,10 @@ public sealed class AppController : IDisposable
             var r = await RegionSelector.SelectAsync(pics);
             if (r is null) return;
             var region = r.Value;
-            // cut the region out of the frozen picture of the screen it lies on (most of it)
-            var best = shots.Keys.OrderByDescending(k => { var i = System.Drawing.Rectangle.Intersect(k, region); return i.Width * i.Height; }).FirstOrDefault();
+            // cut the region out of the frozen pictures (stitched when it spans several monitors)
+            var cut = FrozenComposer.Compose(shots, region);
             string path;
-            if (shots.TryGetValue(best, out var screenImg) && System.Drawing.Rectangle.Intersect(best, region) is { Width: > 1, Height: > 1 } part)
-            {
-                var crop = new SixLabors.ImageSharp.Rectangle(part.X - best.X, part.Y - best.Y, part.Width, part.Height);
-                var cut = SixLabors.ImageSharp.Processing.ProcessingExtensions.Clone(screenImg, c => SixLabors.ImageSharp.Processing.CropExtensions.Crop(c, crop));
-                path = await Task.Run(() => Shots().SaveAsync(cut));
-            }
+            if (cut is not null) path = await Task.Run(() => Shots().SaveAsync(cut));
             else
             {
                 await Task.Delay(150);
@@ -541,7 +536,7 @@ public sealed class AppController : IDisposable
                 Edit: OpenEditor, Save: OnSettingsSaved,
                 Redetect: () => { if (_ffmpeg is not null) DetectHardware(force: true); },
                 Theme: ThemeManager.Apply),
-                advanced: st => AdvancedPage.Build(st, new AdvancedHost(
+                advanced: (st, onApply) => AdvancedPage.Build(st, onApply, new AdvancedHost(
                     EsrganPath: () => _esrgan, InstallEsrgan: InstallEsrganAsync, CheckUpdate: CheckUpdateAsync,
                     DownloadUpdate: DownloadUpdateAsync, CurrentVersion: CurrentVersion.ToString(3))));
             _main.Closed += (_, _) => _main = null;
@@ -721,6 +716,7 @@ public sealed class AppController : IDisposable
         catch (Exception ex) { Report("Không lưu được cài đặt", ex); }
         RegisterHotkeys();
         _main?.SetFolder(_s.OutputDir);
+        _main?.UpdateHotkeys(_s);
         if (_failures.Count > 0)
             _tray?.Balloon("Phím tắt bị chiếm", string.Join(", ", _failures.Select(f => f.Combo)));
         try
