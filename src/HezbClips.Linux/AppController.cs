@@ -7,6 +7,7 @@ using HezbClips.Core.Hardware;
 using HezbClips.Core.Imaging;
 using HezbClips.Core.Capture;
 using HezbClips.Core.Settings;
+using HezbClips.Core.Hotkeys;
 using HezbClips.Linux.Portal;
 using HezbClips.Linux.Windows;
 using SixLabors.ImageSharp.Processing;
@@ -23,6 +24,7 @@ public sealed class AppController
     readonly HardwareProfile _hw = new(Environment.ProcessorCount, false, 0, false, 0);   // Lanczos only for now
     MainWindow? _main;
     SettingsWindow? _settings;
+    GlobalShortcutsPortal? _portal;
     bool _busy;
 
     public AppController(IClassicDesktopStyleApplicationLifetime life)
@@ -42,15 +44,18 @@ public sealed class AppController
 
     public void Start(string[] args)
     {
+        if (args.Contains("--install-shortcuts")) { RunCli(InstallGnomeShortcuts); return; }
+        if (args.Contains("--remove-shortcuts")) { RunCli(() => { GnomeShortcuts.Remove(ShortcutIds); Console.WriteLine("Đã gỡ phím tắt GNOME."); }); return; }
         if (args.Contains("--region")) { _ = RunOnceAsync(ShotRegionAsync); return; }
         if (args.Contains("--full")) { _ = RunOnceAsync(ShotFullAsync); return; }
 
         _main = new MainWindow(() => _ = ShotRegionAsync(), () => _ = ShotFullAsync(),
-            () => ClipboardTool.OpenFolder(EnsureDir()), ShowSettings);
+            () => ClipboardTool.OpenFolder(EnsureDir()), ShowSettings, () => InstallGnomeShortcuts());
         _main.Closed += (_, _) => _life.Shutdown();
         _life.MainWindow = _main;
         _main.Show();
         SetupTray();
+        _ = StartShortcutsAsync();
     }
 
     void SetupTray()
@@ -69,6 +74,53 @@ public sealed class AppController
             TrayIcon.SetIcons(Application.Current!, new TrayIcons { tray });
         }
         catch (Exception) { /* no tray on this desktop: the launcher window still works */ }
+    }
+
+    // ---------- shortcuts ----------
+
+    static readonly string[] ShortcutIds = { "region", "full" };
+
+    void RunCli(Action a)
+    {
+        try { a(); }
+        catch (Exception ex) { Console.Error.WriteLine(ex.Message); }
+        finally { _life.Shutdown(); }
+    }
+
+    void InstallGnomeShortcuts()
+    {
+        try
+        {
+            GnomeShortcuts.Install(new Dictionary<string, (string, string, string)>
+            {
+                ["region"] = ("Hezb Clips: chụp vùng", _s.HotkeyRegionShot, "--region"),
+                ["full"] = ("Hezb Clips: chụp toàn màn hình", _s.HotkeyFullShot, "--full"),
+            });
+            Console.WriteLine($"Đã cài phím tắt GNOME: {_s.HotkeyRegionShot} (vùng), {_s.HotkeyFullShot} (toàn màn hình).");
+            _main?.SetShortcutStatus($"Đã cài phím tắt GNOME: {_s.HotkeyRegionShot} (vùng), {_s.HotkeyFullShot} (toàn màn hình)", false);
+        }
+        catch (Exception ex) { Report(ex); }
+    }
+
+    async Task StartShortcutsAsync()
+    {
+        _portal = new GlobalShortcutsPortal();
+        _portal.Activated += id => Dispatcher.UIThread.Post(() =>
+        {
+            if (id == "region") _ = ShotRegionAsync();
+            else if (id == "full") _ = ShotFullAsync();
+        });
+        var ok = await _portal.TryStartAsync(new Dictionary<string, (string, string)>
+        {
+            ["region"] = ("Chụp vùng", _s.HotkeyRegionShot),
+            ["full"] = ("Chụp toàn màn hình", _s.HotkeyFullShot),
+        });
+        if (ok) { _main?.SetShortcutStatus("Phím tắt toàn cục đã bật (xdg portal).", false); return; }
+        _portal.Dispose(); _portal = null;
+        _main?.SetShortcutStatus(GnomeShortcuts.IsGnome
+            ? "Desktop này không có portal phím tắt. Cài phím tắt qua cài đặt GNOME:"
+            : "Desktop này không hỗ trợ phím tắt toàn cục. Gán lệnh 'hezbclips --region' vào phím tắt của desktop.",
+            GnomeShortcuts.IsGnome);
     }
 
     // ---------- screenshots ----------
