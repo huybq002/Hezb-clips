@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Hezb Clips - Chụp cả trang",
+  "version": "1.0.0",
+  "description": "Chụp toàn bộ trang web đang mở (không cần cuộn) và gửi về ứng dụng Hezb Clips.",
+  "permissions": ["debugger", "activeTab", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Chụp cả trang (Hezb Clips)", "default_icon": "icon128.png" },
+  "options_page": "options.html",
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+H" },
+      "description": "Chụp cả trang gửi về Hezb Clips"
+    }
+  },
+  "icons": { "128": "icon128.png" }
+}

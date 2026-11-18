@@ -96,3 +96,54 @@ public class ToolsTests
         Directory.Delete(dir, true);
     }
 }
+
+public class PageCaptureSessionTests
+{
+    static byte[] Png(int w, int h, SixLabors.ImageSharp.PixelFormats.Rgba32 c)
+    {
+        using var img = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(w, h, c);
+        using var ms = new MemoryStream(); SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, ms); return ms.ToArray();
+    }
+
+    [Fact] public void Slices_in_any_order_become_one_tall_image()
+    {
+        var s = new PageCaptureSession();
+        Assert.Null(s.Add("a", 2, 3, Png(50, 30, new(0, 0, 255, 255))));
+        Assert.Null(s.Add("a", 0, 3, Png(50, 10, new(255, 0, 0, 255))));
+        using var img = s.Add("a", 1, 3, Png(50, 20, new(0, 255, 0, 255)))!;
+        Assert.Equal(60, img.Height);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 0, 0, 255), img[5, 5]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 0, 255), img[5, 15]);
+        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 0, 255, 255), img[5, 45]);
+    }
+
+    [Fact] public void Sessions_do_not_mix_and_bad_input_is_rejected()
+    {
+        var s = new PageCaptureSession();
+        Assert.Null(s.Add("x", 0, 2, Png(10, 10, new(1, 1, 1, 255))));
+        using (var other = s.Add("y", 0, 1, Png(10, 5, new(2, 2, 2, 255)))!) Assert.Equal(5, other.Height);
+        Assert.Throws<ArgumentException>(() => s.Add("x", 5, 2, Png(10, 10, new(1, 1, 1, 255))));
+        Assert.Throws<ArgumentException>(() => s.Add("x", 1, 3, Png(10, 10, new(1, 1, 1, 255)))); // total changed
+        Assert.Throws<ArgumentException>(() => s.Add("", 0, 1, Png(10, 10, new(1, 1, 1, 255))));
+        Assert.Throws<ArgumentException>(() => s.Add("z", 0, 1, Array.Empty<byte>()));
+    }
+
+    [Fact] public void Different_widths_are_refused()
+    {
+        var s = new PageCaptureSession();
+        s.Add("w", 0, 2, Png(10, 10, new(1, 1, 1, 255)));
+        Assert.Throws<InvalidDataException>(() => s.Add("w", 1, 2, Png(20, 10, new(1, 1, 1, 255))));
+    }
+
+    [Fact] public void Token_and_origin_checks()
+    {
+        Assert.True(PageCaptureSession.TokenMatches("abc123", "abc123"));
+        Assert.False(PageCaptureSession.TokenMatches("abc123", "abc124"));
+        Assert.False(PageCaptureSession.TokenMatches("", ""));
+        Assert.False(PageCaptureSession.TokenMatches("abc", null));
+        Assert.True(PageCaptureSession.OriginAllowed("chrome-extension://abcdef"));
+        Assert.True(PageCaptureSession.OriginAllowed(null));
+        Assert.False(PageCaptureSession.OriginAllowed("https://evil.example"));
+        Assert.False(PageCaptureSession.OriginAllowed("http://127.0.0.1:8080"));
+    }
+}

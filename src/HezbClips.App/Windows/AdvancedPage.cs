@@ -15,7 +15,9 @@ public sealed record AdvancedHost(
     Func<IProgress<double>, Task> InstallEsrgan,
     Func<string, Task<UpdateInfo?>> CheckUpdate,
     Func<UpdateInfo, IProgress<double>, Task<string>> DownloadUpdate,
-    string CurrentVersion);
+    string CurrentVersion,
+    Func<string> BridgeStatus,
+    string ExtensionDir);
 
 /// <summary>Settings page: AI upscaler download and app updates.</summary>
 public static class AdvancedPage
@@ -57,6 +59,35 @@ public static class AdvancedPage
             finally { install.IsEnabled = true; bar.Visibility = Visibility.Collapsed; }
         };
         p.Children.Add(install); p.Children.Add(bar);
+
+        // ---- browser extension: full page without scrolling ----
+        p.Children.Add(T("Chụp cả trang qua trình duyệt", 15, bold: true, top: 28));
+        p.Children.Add(T("Tiện ích cho Chrome/Edge chụp toàn bộ trang web một lần, không cần cuộn, rồi gửi ảnh về đây.", 12, dim: true, top: 6));
+        var bridgeOn = new CheckBox { Content = "Bật cầu nối (chỉ nhận từ máy này, cần token)", IsChecked = s.BrowserBridgeEnabled, Margin = new Thickness(0, 10, 0, 0) };
+        p.Children.Add(bridgeOn);
+        onApply(() => s.BrowserBridgeEnabled = bridgeOn.IsChecked == true);
+        var bridgeStatus = T(host.BridgeStatus(), 12, dim: true, top: 6);
+        p.Children.Add(bridgeStatus);
+        p.Children.Add(T("Token", 12, dim: true, top: 12));
+        var tokenRow = new DockPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var copy = new Button { Content = Ui.Content("\uE8C8 Copy"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(12, 6, 12, 6) };
+        DockPanel.SetDock(copy, Dock.Right);
+        var tokenBox = new TextBox { Text = s.BrowserToken, IsReadOnly = true, FontFamily = new System.Windows.Media.FontFamily("Consolas") };
+        copy.Click += (_, _) => { try { Clipboard.SetText(s.BrowserToken); copy.Content = Ui.Content("\uE73E Đã copy"); } catch (Exception) { } };
+        tokenRow.Children.Add(copy); tokenRow.Children.Add(tokenBox);
+        p.Children.Add(tokenRow);
+        var openExt = new Button { Content = Ui.Content("\uE838 Mở thư mục tiện ích"), Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(14, 7, 14, 7) };
+        openExt.Click += (_, _) =>
+        {
+            try
+            {
+                if (Directory.Exists(host.ExtensionDir)) Process.Start("explorer.exe", $"\"{host.ExtensionDir}\"");
+                else bridgeStatus.Text = "Không thấy thư mục tiện ích: " + host.ExtensionDir;
+            }
+            catch (Exception ex) { bridgeStatus.Text = ex.Message; }
+        };
+        p.Children.Add(openExt);
+        p.Children.Add(T("Cài đặt (làm một lần):\n1. Mở chrome://extensions (hoặc edge://extensions), bật Chế độ nhà phát triển.\n2. Bấm \"Tải tiện ích đã giải nén\" rồi chọn thư mục vừa mở.\n3. Mở Tùy chọn của tiện ích, dán token ở trên, bấm Lưu.\n4. Vào trang cần chụp, bấm biểu tượng tiện ích hoặc Alt+Shift+H. Trình duyệt sẽ hiện thanh \"đang gỡ lỗi\" trong lúc chụp, đó là bình thường.", 12, dim: true, top: 10));
 
         // ---- updates ----
         p.Children.Add(T("Cập nhật", 15, bold: true, top: 28));

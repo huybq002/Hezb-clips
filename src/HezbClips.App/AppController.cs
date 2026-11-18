@@ -53,6 +53,13 @@ public sealed class AppController : IDisposable
     {
         ThemeManager.Apply(_s.Theme);
         ForegroundTracker.Start();
+        if (string.IsNullOrEmpty(_s.BrowserToken))
+        {
+            _s.BrowserToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+            try { _store.Save(_s); } catch (Exception) { }
+        }
+        _bridge = new BrowserBridge(() => _s.BrowserToken, OnBrowserPage);
+        ApplyBridge();
         _tray = new TrayHost(new (string, Action)[]
         {
             ("Chụp vùng", () => _ = RegionShotAsync()), ("Chụp toàn màn hình", () => _ = FullShotAsync()),
@@ -538,7 +545,8 @@ public sealed class AppController : IDisposable
                 Theme: ThemeManager.Apply),
                 advanced: (st, onApply) => AdvancedPage.Build(st, onApply, new AdvancedHost(
                     EsrganPath: () => _esrgan, InstallEsrgan: InstallEsrganAsync, CheckUpdate: CheckUpdateAsync,
-                    DownloadUpdate: DownloadUpdateAsync, CurrentVersion: CurrentVersion.ToString(3))));
+                    DownloadUpdate: DownloadUpdateAsync, CurrentVersion: CurrentVersion.ToString(3),
+                    BridgeStatus: () => _bridge?.Status ?? "Đang tắt", ExtensionDir: Path.Combine(AppContext.BaseDirectory, "browser-extension"))));
             _main.Closed += (_, _) => _main = null;
         }
         if (!_main.IsVisible) _main.Show();
@@ -546,6 +554,40 @@ public sealed class AppController : IDisposable
         if (settings) _main.ShowSettings(); else _main.ShowLibrary();
         _main.Topmost = true; _main.Topmost = false; // win the foreground race when called from the tray
         _main.Activate(); _main.Focus();
+    }
+
+    // ---- browser extension bridge: full-page screenshots without scrolling ----
+
+    BrowserBridge? _bridge;
+
+    void ApplyBridge()
+    {
+        if (_bridge is null) return;
+        if (_s.BrowserBridgeEnabled) { if (!_bridge.Start()) _tray?.Balloon("Chụp cả trang", _bridge.Status); }
+        else _bridge.Stop();
+    }
+
+    /// <summary>A finished full-page image arrived from the extension (worker thread): save it and open it like any capture.</summary>
+    void OnBrowserPage(SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> img, string title)
+    {
+        try
+        {
+            string path;
+            using (img)
+            {
+                Directory.CreateDirectory(_s.OutputDir);
+                path = HezbClips.Core.Output.FileNamer.Next(_s.OutputDir, "Page", "png", DateTime.Now, File.Exists);
+                SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, path);
+                var (w, h) = (img.Width, img.Height);
+                _app.Dispatcher.BeginInvoke(() => Toast.Show($"Đã nhận ảnh cả trang {w} × {h} px" + (title.Length > 0 ? $" — {System.Web.HttpUtility.UrlDecode(title)}" : "")));
+            }
+            _app.Dispatcher.BeginInvoke(() =>
+            {
+                _main?.RefreshLibrary();
+                AfterImage(path, ShotMode.Normal, System.Drawing.Rectangle.Empty);
+            });
+        }
+        catch (Exception ex) { _app.Dispatcher.BeginInvoke(() => Report("Không lưu được ảnh cả trang", ex)); }
     }
 
     // ---- optional tools and updates ----
@@ -699,6 +741,7 @@ public sealed class AppController : IDisposable
         try { _store.Save(_s); }
         catch (Exception ex) { Report("Không lưu được cài đặt", ex); }
         RegisterHotkeys();
+        ApplyBridge();
         _main?.SetFolder(_s.OutputDir);
         _main?.UpdateHotkeys(_s);
         if (_failures.Count > 0)
@@ -714,6 +757,7 @@ public sealed class AppController : IDisposable
 
     public void Dispose()
     {
+        _bridge?.Dispose();
         if (_recording && _recorder is not null)
         {
             // exiting mid-recording: finish the clip instead of leaving raw segments in %TEMP%

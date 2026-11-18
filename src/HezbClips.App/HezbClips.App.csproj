@@ -15,6 +15,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="browser-extension\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Assets/app-dark.ico" />
     <Resource Include="Assets/app-light.ico" />
     <Resource Include="Assets/logo-dark.png" />

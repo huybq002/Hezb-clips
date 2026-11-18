@@ -42,5 +42,8 @@ public class AppSettings
     public int LibraryRetentionDays { get; set; } = 0;
     public string UpdateFeedUrl { get; set; } = "";
     public bool AutoCheckUpdates { get; set; } = true;
+    /// <summary>Local bridge the browser extension uses to send full-page screenshots (127.0.0.1 only, secret token).</summary>
+    public bool BrowserBridgeEnabled { get; set; } = true;
+    public string BrowserToken { get; set; } = "";
     public bool StartWithWindows { get; set; } = false;
 }
