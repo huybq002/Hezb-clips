@@ -220,27 +220,29 @@ public sealed class RecordingEffects : IDisposable
     {
         const int Size = 190;
         readonly System.Drawing.Rectangle _region;
-        readonly Image _img = new() { Stretch = Stretch.UniformToFill, RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(-1, 1) };
+        readonly Image _img = new() { Stretch = Stretch.UniformToFill };
         MediaCapture? _capture;
         MediaFrameReader? _reader;
         WriteableBitmap? _wb;
         volatile bool _pending;
 
+        [DllImport("gdi32.dll")] static extern IntPtr CreateEllipticRgn(int l, int t, int r, int b);
+        [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr h, IntPtr rgn, bool redraw);
+
         public WebcamWindow(System.Drawing.Rectangle region)
         {
             _region = region;
+            // A normal (not per-pixel-transparent) window: layered/transparent WPF windows are painted in software and only
+            // partly refreshed when a bitmap changes 30 times a second, which left most of the bubble black. The round shape
+            // comes from a window region instead, so the picture is drawn by the GPU like any other window.
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; ShowInTaskbar = false; Topmost = true; ShowActivated = false;
-            AllowsTransparency = true; Background = Brushes.Transparent; Width = Size + 12; Height = Size + 12; WindowStartupLocation = WindowStartupLocation.Manual;
-            RenderOptions.SetBitmapScalingMode(_img, BitmapScalingMode.HighQuality);
-            var disc = new Grid { Width = Size, Height = Size, Clip = new EllipseGeometry(new Point(Size / 2.0, Size / 2.0), Size / 2.0, Size / 2.0) };
-            disc.Children.Add(new Border { Background = Brushes.Black });
-            disc.Children.Add(_img);
+            AllowsTransparency = false; Background = Brushes.Black; Width = Size; Height = Size; WindowStartupLocation = WindowStartupLocation.Manual;
             Content = new Grid
             {
                 Children =
                 {
-                    new Ellipse { Width = Size + 6, Height = Size + 6, Fill = Brushes.White, Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 12, ShadowDepth = 1, Opacity = 0.5 } },
-                    disc,
+                    _img,
+                    new Ellipse { Stroke = Brushes.White, StrokeThickness = 5, IsHitTestVisible = false }, // white ring just inside the round edge
                 },
             };
             MouseLeftButtonDown += (_, _) => { try { DragMove(); } catch (InvalidOperationException) { } };
@@ -248,9 +250,10 @@ public sealed class RecordingEffects : IDisposable
             Loaded += (_, _) =>
             {
                 var k = VisualTreeHelper.GetDpi(this).DpiScaleX;
-                int w = (int)(ActualWidth * k), h = (int)(ActualHeight * k);
-                WinNative.SetWindowPos(new WindowInteropHelper(this).Handle, WinNative.HWND_TOPMOST,
-                    _region.Right - w - 12, _region.Bottom - h - 12, 0, 0, 0x0001 /*NOSIZE*/ | WinNative.SWP_NOACTIVATE);
+                int px = (int)Math.Ceiling(Size * k);
+                var hwnd = new WindowInteropHelper(this).Handle;
+                SetWindowRgn(hwnd, CreateEllipticRgn(0, 0, px + 1, px + 1), true);
+                WinNative.SetWindowPos(hwnd, WinNative.HWND_TOPMOST, _region.Right - px - 12, _region.Bottom - px - 12, 0, 0, 0x0001 /*NOSIZE*/ | WinNative.SWP_NOACTIVATE);
             };
         }
 
@@ -285,16 +288,20 @@ public sealed class RecordingEffects : IDisposable
             using var frame = reader.TryAcquireLatestFrame();
             var sb = frame?.VideoMediaFrame?.SoftwareBitmap;
             if (sb is null) return;
-            using var conv = SoftwareBitmap.Convert(sb, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+            using var conv = SoftwareBitmap.Convert(sb, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore);
             var w = conv.PixelWidth; var h = conv.PixelHeight;
             var buf = new byte[w * h * 4];
             conv.CopyToBuffer(buf.AsBuffer());
+            // mirror like a real mirror, in the data: a RenderTransform on the Image drew only part of the picture
+            var px = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, int>(buf.AsSpan());
+            for (int y = 0; y < h; y++) px.Slice(y * w, w).Reverse();
             _pending = true;
             Dispatcher.BeginInvoke(() =>
             {
                 try
                 {
-                    if (_wb is null || _wb.PixelWidth != w || _wb.PixelHeight != h) { _wb = new WriteableBitmap(w, h, 96, 96, PixelFormats.Pbgra32, null); _img.Source = _wb; }
+                    // Bgr32: the camera's alpha byte is not reliable (0 in parts of the frame draws as black), so ignore it
+                    if (_wb is null || _wb.PixelWidth != w || _wb.PixelHeight != h) { _wb = new WriteableBitmap(w, h, 96, 96, PixelFormats.Bgr32, null); _img.Source = _wb; }
                     _wb.WritePixels(new Int32Rect(0, 0, w, h), buf, w * 4, 0);
                 }
                 finally { _pending = false; }

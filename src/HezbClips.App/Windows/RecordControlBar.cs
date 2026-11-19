@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
@@ -57,6 +58,10 @@ public sealed class RecordControlBar : Window
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; Topmost = true; ShowInTaskbar = false;
         SizeToContent = SizeToContent.WidthAndHeight; ShowActivated = false;
         AllowsTransparency = true; Background = Brushes.Transparent;
+        // names for screen readers and UI automation (the visible content is icon + text)
+        AutomationProperties.SetName(_sys, "Âm thanh máy"); AutomationProperties.SetName(_mic, "Mic"); AutomationProperties.SetName(_gif, "GIF");
+        AutomationProperties.SetName(_clicks, "Hiện click"); AutomationProperties.SetName(_keys, "Hiện phím"); AutomationProperties.SetName(_cam, "Webcam");
+        AutomationProperties.SetName(_go, "Quay"); AutomationProperties.SetName(_pause, "Tạm dừng"); AutomationProperties.SetName(_cancel, "Hủy");
         _sys.IsChecked = s.CaptureSystemAudio; _mic.IsChecked = s.CaptureMicrophone;
         _clicks.IsChecked = s.ShowClicks; _keys.IsChecked = s.ShowKeys; _cam.IsChecked = s.Webcam;
         _quality.Items.Add("1080p"); _quality.Items.Add("2K"); _quality.Items.Add("4K");
@@ -108,6 +113,7 @@ public sealed class RecordControlBar : Window
         _paused = paused;
         if (paused) _sw.Stop(); else _sw.Start();
         _pause.Content = Ui.Content(paused ? "\uE768 Tiếp tục" : "\uE769 Tạm dừng");
+        AutomationProperties.SetName(_pause, paused ? "Tiếp tục" : "Tạm dừng");
         _dot.Fill = Ui.Brush(paused ? "Disabled" : "Danger");
     }
 
@@ -121,7 +127,7 @@ public sealed class RecordControlBar : Window
             _clicks.IsChecked == true, _keys.IsChecked == true, _cam.IsChecked == true);
         _recording = true; _sw.Restart(); _tick.Start();
         foreach (var c in new Control[] { _sys, _mic, _quality, _gif, _gifFps, _gifWidth, _clicks, _keys, _cam, _cancel }) c.IsEnabled = false;
-        _go.Content = Ui.Content("\uE71A Dừng"); _dot.Fill = Ui.Brush("Danger"); _pause.Visibility = Visibility.Visible;
+        _go.Content = Ui.Content("\uE71A Dừng"); AutomationProperties.SetName(_go, "Dừng"); _dot.Fill = Ui.Brush("Danger"); _pause.Visibility = Visibility.Visible;
         Dispatcher.BeginInvoke(PlaceNearRegion, DispatcherPriority.Loaded);
         RecordClicked?.Invoke(choices);
     }
