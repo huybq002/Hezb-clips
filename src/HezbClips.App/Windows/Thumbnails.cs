@@ -23,15 +23,21 @@ public static class Thumbnails
     {
         await Gate.WaitAsync();
         try { return await Task.Run(() => Build(item, ffmpeg, cacheDir)); }
-        catch (Exception) { return null; }
+        catch (Exception) { return null; } // unreadable file: the card keeps its placeholder
         finally { Gate.Release(); }
     }
 
     static ImageSource? Build(MediaItem item, string? ffmpeg, string cacheDir)
     {
         if (item.Kind == MediaKind.Video) return VideoFrame(item, ffmpeg, cacheDir);
-        try { return Decode(item.Path); }
-        catch (Exception) { return ViaImageSharp(item.Path); }
+        // small JPEG per file on disk: reopening the library never decodes the big originals again
+        var cached = Path.Combine(cacheDir, Key(item) + ".jpg");
+        try { if (File.Exists(cached)) return Decode(cached); } catch (Exception) { /* damaged cache entry: rebuild */ }
+        ImageSource? bmp;
+        try { bmp = Decode(item.Path); }
+        catch (Exception) { bmp = ViaImageSharp(item.Path); }
+        if (bmp is BitmapSource src) SaveCache(src, cached);
+        return bmp;
     }
 
     static BitmapImage Decode(string path)
@@ -57,11 +63,28 @@ public static class Thumbnails
         catch (Exception) { return null; }
     }
 
+    static string Key(MediaItem item) =>
+        Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(item.Path + item.Modified.Ticks + item.Size)));
+
+    static void SaveCache(BitmapSource src, string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var enc = new JpegBitmapEncoder { QualityLevel = 82 };
+            enc.Frames.Add(BitmapFrame.Create(src));
+            var tmp = path + ".tmp";
+            using (var fs = File.Create(tmp)) enc.Save(fs);
+            File.Move(tmp, path, true);
+        }
+        catch (Exception) { /* read-only profile or disk full: just no cache */ }
+    }
+
     static ImageSource? VideoFrame(MediaItem item, string? ffmpeg, string cacheDir)
     {
         if (ffmpeg is null) return null;
         Directory.CreateDirectory(cacheDir);
-        var key = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(item.Path + item.Modified.Ticks + item.Size)));
+        var key = Key(item);
         var thumb = Path.Combine(cacheDir, key + ".jpg");
         if (!File.Exists(thumb))
         {

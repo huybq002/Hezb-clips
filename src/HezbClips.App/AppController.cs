@@ -49,7 +49,7 @@ public sealed class AppController : IDisposable
         _s = _store.Load();
     }
 
-    public void Start(bool showMain = true)
+    public void Start(bool showMain = true, string? editPath = null)
     {
         ThemeManager.Apply(_s.Theme);
         ForegroundTracker.Start();
@@ -82,6 +82,7 @@ public sealed class AppController : IDisposable
         CleanupLibrary();
         AutoCheckUpdate();
         if (showMain) OpenLibrary();
+        if (editPath is not null && File.Exists(editPath)) OpenEditor(editPath);
     }
 
     /// <summary>Second launch of the app, or the tray: bring up the main window.</summary>
@@ -715,7 +716,7 @@ public sealed class AppController : IDisposable
     {
         try
         {
-            var w = new ImageEditorWindow(imagePath, _s.EditorKeys);
+            var w = new ImageEditorWindow(imagePath, _s.EditorKeys, _s.AutoCopyAfterCapture);
             w.Show(); w.Activate();
         }
         catch (Exception ex) { Report("Không mở được trình chỉnh sửa", ex); }

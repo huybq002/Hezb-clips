@@ -13,7 +13,6 @@ using System.Windows.Shapes;
 using Windows.Globalization;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
-using WpfBitmapDecoder = System.Windows.Media.Imaging.BitmapDecoder;
 
 namespace HezbClips.App.Windows;
 
@@ -35,7 +34,7 @@ public sealed partial class ImageEditorWindow
         try
         {
             var engine = OcrEngine.TryCreateFromUserProfileLanguages() ?? OcrEngine.TryCreateFromLanguage(new Language("en-US"));
-            if (engine is null) { _status.Text = "Windows chưa có gói nhận dạng chữ. Thêm ngôn ngữ trong Cài đặt Windows > Thời gian & ngôn ngữ."; return null; }
+            if (engine is null) { Hud("", "Windows chưa có gói nhận dạng chữ. Thêm ngôn ngữ trong Cài đặt Windows > Thời gian & ngôn ngữ.", ok: false); return null; }
 
             BitmapSource src = _bmp;
             var scale = 1.0;
@@ -52,22 +51,22 @@ public sealed partial class ImageEditorWindow
             var result = await engine.RecognizeAsync(soft);
             return (result, scale);
         }
-        catch (Exception ex) { _status.Text = "Nhận dạng chữ lỗi: " + ex.Message; return null; }
+        catch (Exception ex) { Hud("", "Nhận dạng chữ lỗi: " + ex.Message, ok: false); return null; }
     }
 
-    async Task CopyTextAsync()
+    async Task CopyTextAsync(Button? b)
     {
-        _status.Text = "Đang nhận dạng chữ…";
+        Hud("", "Đang nhận dạng chữ…");
         if (await RunOcrAsync() is not { } r) return;
         var text = string.Join(Environment.NewLine, r.Result.Lines.Select(l => l.Text));
-        if (string.IsNullOrWhiteSpace(text)) { _status.Text = "Không tìm thấy chữ trong ảnh."; return; }
-        try { Clipboard.SetText(text); _status.Text = $"✓ Đã copy {text.Length} ký tự ({r.Result.Lines.Count} dòng)"; }
-        catch (Exception) { _status.Text = "Clipboard đang bận, thử lại."; }
+        if (string.IsNullOrWhiteSpace(text)) { Hud("", "Không tìm thấy chữ trong ảnh", ok: false); return; }
+        try { Clipboard.SetText(text); Done(b, "Đã copy chữ", $"Đã copy {text.Length} ký tự ({r.Result.Lines.Count} dòng) vào clipboard"); }
+        catch (Exception) { Hud("", "Clipboard đang bận, thử lại", ok: false); }
     }
 
-    async Task RedactAsync()
+    async Task RedactAsync(Button? b)
     {
-        _status.Text = "Đang tìm thông tin nhạy cảm…";
+        Hud("", "Đang tìm thông tin nhạy cảm…");
         if (await RunOcrAsync() is not { } r) return;
         var rects = new List<Rect>();
         foreach (var line in r.Result.Lines)
@@ -87,20 +86,24 @@ public sealed partial class ImageEditorWindow
                         if (spans[i].Start < m.Index + m.Length && spans[i].End > m.Index) hit.Add(i);
             foreach (var i in hit)
             {
-                var b = spans[i].Word.BoundingRect;
-                rects.Add(new Rect(b.X / r.Scale, b.Y / r.Scale, b.Width / r.Scale, b.Height / r.Scale));
+                var bb = spans[i].Word.BoundingRect;
+                rects.Add(new Rect(bb.X / r.Scale, bb.Y / r.Scale, bb.Width / r.Scale, bb.Height / r.Scale));
             }
         }
-        if (rects.Count == 0) { _status.Text = "Không thấy email, số điện thoại hay số thẻ trong ảnh."; return; }
+        if (rects.Count == 0) { Hud("", "Không thấy email, số điện thoại hay số thẻ trong ảnh", ok: false); return; }
+
+        // all masks of one pass undo together
+        var cmds = new List<IEditCmd>();
         foreach (var rc in rects)
         {
-            var pad = 3;
+            const int pad = 3;
             var box = new Rect(Math.Max(0, rc.X - pad), Math.Max(0, rc.Y - pad), rc.Width + pad * 2, rc.Height + pad * 2);
-            var m = new Rectangle { Width = box.Width, Height = box.Height, Stroke = Brushes.Transparent, Fill = MosaicBrush(box) };
+            var m = new Rectangle { Width = box.Width, Height = box.Height, Stroke = Brushes.Transparent, Fill = MosaicBrush(box), Tag = "mosaic" };
             RenderOptions.SetBitmapScalingMode(m, BitmapScalingMode.NearestNeighbor);
             Canvas.SetLeft(m, box.X); Canvas.SetTop(m, box.Y);
-            _canvas.Children.Add(m); Commit(m);
+            cmds.Add(new AddCmd(this, m, "làm mờ"));
         }
-        _status.Text = $"✓ Đã che {rects.Count} vùng nhạy cảm. Ctrl+Z để hoàn tác từng vùng.";
+        Run(new GroupCmd("che thông tin nhạy cảm", cmds));
+        Done(b, $"Đã che {rects.Count}", $"Đã che {rects.Count} vùng nhạy cảm (Ctrl+Z hoàn tác tất cả)");
     }
 }

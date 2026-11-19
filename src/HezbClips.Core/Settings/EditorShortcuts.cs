@@ -4,11 +4,11 @@ namespace HezbClips.Core.Settings;
 public static class EditorShortcuts
 {
     /// <summary>Tool ids in toolbar order. Keys used by the editor itself and not assignable: C (custom colour).</summary>
-    public static readonly string[] Tools = { "Pen", "Highlighter", "Line", "Arrow", "Rect", "Ellipse", "Text", "Number", "Mosaic", "Crop" };
+    public static readonly string[] Tools = { "Select", "Pen", "Highlighter", "Line", "Arrow", "Rect", "Ellipse", "Text", "Number", "Mosaic", "Crop" };
 
     public static readonly IReadOnlyDictionary<string, string> Defaults = new Dictionary<string, string>
     {
-        ["Pen"] = "P", ["Highlighter"] = "H", ["Line"] = "L", ["Arrow"] = "A", ["Rect"] = "R",
+        ["Select"] = "V", ["Pen"] = "P", ["Highlighter"] = "H", ["Line"] = "L", ["Arrow"] = "A", ["Rect"] = "R",
         ["Ellipse"] = "O", ["Text"] = "T", ["Number"] = "N", ["Mosaic"] = "M", ["Crop"] = "X",
     };
 

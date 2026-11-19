@@ -35,7 +35,7 @@ public sealed class SettingsView : Grid
 
     static readonly Dictionary<string, string> ToolLabels = new()
     {
-        ["Pen"] = "Bút", ["Highlighter"] = "Tô sáng", ["Line"] = "Đường thẳng", ["Arrow"] = "Mũi tên", ["Rect"] = "Chữ nhật",
+        ["Select"] = "Chọn / di chuyển", ["Pen"] = "Bút", ["Highlighter"] = "Tô sáng", ["Line"] = "Đường thẳng", ["Arrow"] = "Mũi tên", ["Rect"] = "Chữ nhật",
         ["Ellipse"] = "Elip", ["Text"] = "Chữ", ["Number"] = "Số", ["Mosaic"] = "Làm mờ", ["Crop"] = "Cắt ảnh",
     };
 
@@ -261,12 +261,14 @@ public sealed class SettingsView : Grid
         string K(string t) => keys[t];
         Group("Toàn cục", Hk.Select(h => (h.Get(_s), h.Label)).Append(("Esc", "Hủy khi đang chọn vùng")).ToArray());
         Group("Trình chỉnh sửa ảnh",
-            ($"{K("Pen")} {K("Highlighter")} {K("Line")} {K("Arrow")}", "Bút · tô sáng · đường thẳng · mũi tên"),
+            ($"{K("Select")} {K("Pen")} {K("Highlighter")} {K("Line")} {K("Arrow")}", "Chọn/di chuyển · bút · tô sáng · đường thẳng · mũi tên"),
             ($"{K("Rect")} {K("Ellipse")} {K("Text")} {K("Number")} {K("Mosaic")} {K("Crop")}", "Chữ nhật · elip · chữ · đánh số · làm mờ · cắt ảnh"),
             ("1 - 9 / C", "Chọn màu có sẵn / màu tùy chọn"),
             ("[   ]", "Giảm / tăng độ dày nét"),
             ("Shift (khi vẽ)", "Giữ tỉ lệ: hình vuông, hình tròn, góc 45°"),
-            ("Ctrl+Z / Ctrl+Y", "Hoàn tác / làm lại (Delete cũng hoàn tác)"),
+            ("Ctrl+Z / Ctrl+Y", "Hoàn tác / làm lại (kể cả cắt, xoay, xóa hết)"),
+            ("Delete / mũi tên", "Xóa / nhích chú thích đang chọn"),
+            ("Ctrl+lăn chuột · Ctrl+0 / Ctrl+1", "Thu phóng · vừa khung / 100%"),
             ("Ctrl+Shift+Z", "Xóa hết chú thích"),
             ("Ctrl+L / Ctrl+R", "Xoay ảnh trái / phải"),
             ("Ctrl+S / Ctrl+C", "Lưu file *_edit.png / copy ảnh"),

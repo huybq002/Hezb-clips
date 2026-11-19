@@ -33,7 +33,7 @@ public static class Ui
     }
 
     /// <summary>Looping animated GIF that starts by itself (see GifPlayer). Fills its parent, cropped to fit.</summary>
-    public static GifPlayer AnimatedGif(string path, double height, int decodeWidth = 220, int maxFrames = 75) =>
+    public static GifPlayer AnimatedGif(string path, double height, int decodeWidth = 220, int maxFrames = 30) =>
         new(path, decodeWidth, maxFrames) { Height = height, Stretch = Stretch.UniformToFill, IsHitTestVisible = false };
 
     /// <summary>Windows icon font (Win11 Fluent, falls back to Win10 MDL2). Glyphs live in the private-use area U+E000–U+F8FF.</summary>

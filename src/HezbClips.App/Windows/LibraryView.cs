@@ -23,6 +23,16 @@ public sealed class LibraryView : DockPanel
     readonly TextBox _search = new() { Width = 200, Margin = new Thickness(6, 0, 0, 0), ToolTip = "Tìm theo tên file hoặc #thẻ" };
     readonly TextBlock _searchHint = new() { Text = "Tìm tên hoặc #thẻ", Foreground = Ui.Brush("Disabled"), FontSize = 13, IsHitTestVisible = false, Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left };
     bool _starOnly;
+    // cached directory scan + folder watcher: the disk is only re-read when something really changed
+    IReadOnlyList<MediaItem> _all = Array.Empty<MediaItem>();
+    List<MediaItem> _shown = new();
+    int _built;                       // how many of _shown already have a card
+    const int Batch = 30;             // cards are created in batches while scrolling, not all at once
+    bool _dirty = true;
+    FileSystemWatcher? _watcher;
+    readonly System.Windows.Threading.DispatcherTimer _searchTimer = new() { Interval = TimeSpan.FromMilliseconds(220) };
+    readonly System.Windows.Threading.DispatcherTimer _watchTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    ScrollViewer? _scroll;
     readonly string? _ffmpeg;
     readonly Action<string>? _edit, _pin;
     readonly WrapPanel _grid = new() { Margin = new Thickness(-6, 4, 0, 12) };
@@ -36,7 +46,7 @@ public sealed class LibraryView : DockPanel
     string _dir => _dirValue;
 
     /// <summary>Point the gallery at another folder (after Settings changed it).</summary>
-    public void SetFolder(string dir) { _dirValue = dir; _grid.Tag = null; Reload(); }
+    public void SetFolder(string dir) { _dirValue = dir; Watch(); Invalidate(); }
 
     public LibraryView(string outputDir, string? ffmpeg, string dataDir, Action<string>? edit, Action<string>? pin = null)
     {
@@ -48,42 +58,92 @@ public sealed class LibraryView : DockPanel
         var openDir = new Button { Content = Ui.Content("\uE838 Mở thư mục"), Margin = new Thickness(8, 0, 0, 0) };
         openDir.Click += (_, _) => { try { Directory.CreateDirectory(_dir); Process.Start("explorer.exe", $"\"{_dir}\""); } catch (Exception) { } };
         var refresh = new Button { Content = Ui.Glyph("\uE72C"), Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(10, 6, 10, 6), ToolTip = "Làm mới (F5)" };
-        refresh.Click += (_, _) => { _grid.Tag = null; Reload(); };
+        refresh.Click += (_, _) => Invalidate();
         right.Children.Add(_summary); right.Children.Add(openDir); right.Children.Add(refresh);
         DockPanel.SetDock(right, Dock.Right);
         var chips = new StackPanel { Orientation = Orientation.Horizontal };
         void Chip(string text, MediaKind? kind)
         {
             var c = new ToggleButton { Content = Ui.Content(text), Margin = new Thickness(0, 0, 6, 0), IsChecked = kind is null };
-            c.Click += (_, _) => { _filter = kind; foreach (var o in _chips) o.IsChecked = o == c; Reload(); };
+            c.Click += (_, _) => { _filter = kind; foreach (var o in _chips) o.IsChecked = o == c; Rebuild(); };
             _chips.Add(c); chips.Children.Add(c);
         }
         Chip("Tất cả", null); Chip("\uE91B Ảnh", MediaKind.Image); Chip("\uE714 Video", MediaKind.Video); Chip("GIF", MediaKind.Gif);
         var starChip = new ToggleButton { Content = Ui.Content("\uE734 Gắn sao"), Margin = new Thickness(0, 0, 6, 0), ToolTip = "Chỉ hiện file đã gắn sao" };
-        starChip.Click += (_, _) => { _starOnly = starChip.IsChecked == true; Reload(); };
+        starChip.Click += (_, _) => { _starOnly = starChip.IsChecked == true; Rebuild(); };
         chips.Children.Add(starChip);
         var searchBox = new Grid(); searchBox.Children.Add(_search); searchBox.Children.Add(_searchHint);
-        _search.TextChanged += (_, _) => { _searchHint.Visibility = _search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; Reload(); };
+        _search.TextChanged += (_, _) =>
+        {
+            _searchHint.Visibility = _search.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            _searchTimer.Stop(); _searchTimer.Start(); // rebuild once the user pauses typing
+        };
+        _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); Rebuild(); };
+        _watchTimer.Tick += (_, _) => { _watchTimer.Stop(); if (IsVisible) Reload(); };
         chips.Children.Add(searchBox);
         bar.Children.Add(right); bar.Children.Add(chips);
 
         var body = new Grid();
-        body.Children.Add(new ScrollViewer { Content = _grid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        _scroll = new ScrollViewer { Content = _grid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        // near the bottom (or the window is taller than what is built): create the next batch of cards
+        _scroll.ScrollChanged += (_, e) =>
+        {
+            if (_built < _shown.Count && e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 700) AddBatch();
+        };
+        body.Children.Add(_scroll);
         body.Children.Add(_empty);
         SetDock(bar, Dock.Top); Children.Add(bar); Children.Add(body);
-        Loaded += (_, _) => Reload();
+        Loaded += (_, _) => { Watch(); Reload(); };
+        Unloaded += (_, _) => { _watcher?.Dispose(); _watcher = null; };
     }
 
+    void Watch()
+    {
+        _watcher?.Dispose(); _watcher = null;
+        try
+        {
+            if (!Directory.Exists(_dir)) return;
+            var w = new FileSystemWatcher(_dir) { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size, EnableRaisingEvents = true };
+            void Changed(object? _, EventArgs __) => Dispatcher.BeginInvoke(() => { _dirty = true; _watchTimer.Stop(); _watchTimer.Start(); });
+            w.Created += Changed; w.Deleted += Changed; w.Renamed += Changed; w.Changed += Changed;
+            _watcher = w;
+        }
+        catch (Exception) { _watcher = null; } // network share etc.: fall back to scanning on every Reload
+    }
+
+    /// <summary>Force a fresh read of the folder and redraw.</summary>
+    void Invalidate() { _dirty = true; _grid.Tag = null; Reload(); }
+
+    /// <summary>Redraw from the cached scan (filters, stars, tags changed).</summary>
+    void Repaint() { _grid.Tag = null; Rebuild(); }
+
+    /// <summary>Show current folder contents. Cheap when nothing changed (the watcher tells us).</summary>
     public void Reload()
     {
-        var items = LibraryScanner.Scan(_dir);
-        var shown = LibraryQuery.Filter(items, _meta, _search.Text, _starOnly, _filter);
-        _summary.Text = shown.Count == items.Count ? $"{items.Count} mục · {FormatSize(items.Sum(i => i.Size))}" : $"{shown.Count}/{items.Count} mục";
-        _empty.Visibility = shown.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        var sig = _filter + ":" + _starOnly + ":" + _search.Text + ":" + string.Join('|', shown.Select(i => i.Path + i.Modified.Ticks));
-        if (_grid.Tag as string == sig) return; // Activated fires often: keep cards when nothing changed
-        _grid.Tag = sig; _grid.Children.Clear(); _version++;
-        foreach (var item in shown) _grid.Children.Add(Card(item, _version));
+        if (_dirty || _watcher is null)
+        {
+            _all = LibraryScanner.Scan(_dir);
+            _dirty = false;
+        }
+        Rebuild();
+    }
+
+    void Rebuild()
+    {
+        _shown = LibraryQuery.Filter(_all, _meta, _search.Text, _starOnly, _filter).ToList();
+        _summary.Text = _shown.Count == _all.Count ? $"{_all.Count} mục · {FormatSize(_all.Sum(i => i.Size))}" : $"{_shown.Count}/{_all.Count} mục";
+        _empty.Visibility = _shown.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var sig = _filter + ":" + _starOnly + ":" + _search.Text + ":" + _shown.Count + ":" + (_shown.Count > 0 ? _shown[0].Path + _shown[0].Modified.Ticks + _shown[^1].Path : "") + ":" + _all.Count;
+        if (_grid.Tag as string == sig) return; // nothing visible changed: keep the cards
+        _grid.Tag = sig; _grid.Children.Clear(); _built = 0; _version++;
+        _scroll?.ScrollToTop();
+        AddBatch();
+    }
+
+    void AddBatch()
+    {
+        var end = Math.Min(_shown.Count, _built + Batch);
+        for (; _built < end; _built++) _grid.Children.Add(Card(_shown[_built], _version));
     }
 
     UIElement Card(MediaItem item, int version)
@@ -118,7 +178,7 @@ public sealed class LibraryView : DockPanel
         var starred = _meta.IsStarred(item.Path);
         var star = OverlayButton(starred ? "\uE735" : "\uE734", starred ? "Bỏ sao" : "Gắn sao", HorizontalAlignment.Left);
         if (starred) star.Foreground = new SolidColorBrush(Color.FromRgb(255, 214, 10));
-        star.Click += (_, e) => { _meta.ToggleStar(item.Path); _grid.Tag = null; Reload(); e.Handled = true; };
+        star.Click += (_, e) => { _meta.ToggleStar(item.Path); Repaint(); e.Handled = true; };
         var more = OverlayButton("\uE712", "Thêm thao tác", HorizontalAlignment.Right);
         var menu = new ContextMenu();
         void M(string text, Action act) { var mi = new MenuItem { Header = Ui.Content(text) }; mi.Click += (_, _) => act(); menu.Items.Add(mi); }
@@ -198,7 +258,7 @@ public sealed class LibraryView : DockPanel
         var text = PromptWindow.Ask(Window.GetWindow(this), "Gắn thẻ", "Các thẻ cách nhau bằng dấu phẩy, ví dụ: lỗi, thiết kế, khách hàng", current);
         if (text is null) return;
         _meta.SetTags(item.Path, LibraryMetaStore.ParseTags(text));
-        _grid.Tag = null; Reload();
+        Repaint();
     }
 
     async Task LoadThumb(MediaItem item, Image img, int version)
@@ -232,7 +292,7 @@ public sealed class LibraryView : DockPanel
     {
         try { FileSystem.DeleteFile(item.Path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin); }
         catch (Exception) { return; }
-        _grid.Tag = null; Reload();
+        Invalidate();
     }
 
     static string FormatSize(long b) => b switch

@@ -32,6 +32,12 @@ public sealed class GifPlayer : System.Windows.Controls.Image
         _timer.Tick += (_, _) => Next();
         Loaded += async (_, _) => await StartAsync();
         Unloaded += (_, _) => { _timer.Stop(); _frames = null; Source = null; };
+        // no point animating a hidden window (minimised to the tray, or behind a capture)
+        IsVisibleChanged += (_, e) =>
+        {
+            if (_frames is null || _frames.Count < 2) return;
+            if ((bool)e.NewValue) _timer.Start(); else _timer.Stop();
+        };
     }
 
     async Task StartAsync()
@@ -56,7 +62,7 @@ public sealed class GifPlayer : System.Windows.Controls.Image
         var (frame, ms) = _frames[_index];
         Source = frame;
         _timer.Interval = TimeSpan.FromMilliseconds(ms);
-        if (_frames.Count > 1) _timer.Start(); else _timer.Stop();
+        if (_frames.Count > 1 && IsVisible) _timer.Start(); else _timer.Stop();
     }
 
     List<(BitmapSource, int)> Decode()

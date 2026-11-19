@@ -36,7 +36,10 @@ public partial class App : Application
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, ex) => { Dispatcher.BeginInvoke(() => _controller?.ReportUnhandled(ex.Exception)); ex.SetObserved(); };
 
         _controller = new AppController(this);
-        _controller.Start(showMain: !e.Args.Contains("--tray"));
+        // "HezbClips.exe --edit picture.png" opens that picture straight in the editor
+        var editIdx = Array.IndexOf(e.Args, "--edit");
+        var editPath = editIdx >= 0 && editIdx + 1 < e.Args.Length ? e.Args[editIdx + 1] : null;
+        _controller.Start(showMain: !e.Args.Contains("--tray") && editPath is null, editPath: editPath);
 
         _show = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
         var waiter = new Thread(() =>
