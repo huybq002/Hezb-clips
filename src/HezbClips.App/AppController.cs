@@ -347,7 +347,6 @@ public sealed class AppController : IDisposable
         if (_busy) return;
         if (_recorder is null)
         {
-            Report("Record not ready", new InvalidOperationException($"ffmpeg={_ffmpeg ?? "null"}"));
             _tray?.Balloon("Hezb Clips", _ffmpeg is null ? "Chưa có ffmpeg nên chưa quay được." : "Đang dò cấu hình máy, thử lại sau vài giây.");
             return;
         }
@@ -580,7 +579,7 @@ public sealed class AppController : IDisposable
                 path = HezbClips.Core.Output.FileNamer.Next(_s.OutputDir, "Page", "png", DateTime.Now, File.Exists);
                 SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, path);
                 var (w, h) = (img.Width, img.Height);
-                _app.Dispatcher.BeginInvoke(() => Toast.Show($"Đã nhận ảnh cả trang {w} × {h} px" + (title.Length > 0 ? $" — {System.Web.HttpUtility.UrlDecode(title)}" : "")));
+                _app.Dispatcher.BeginInvoke(() => Toast.Show($"Đã nhận ảnh cả trang {w} × {h} px" + (title.Length > 0 ? $" — {title}" : "")));
             }
             _app.Dispatcher.BeginInvoke(() =>
             {
