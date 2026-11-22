@@ -291,7 +291,13 @@ public sealed class SettingsView : Grid
     {
         foreach (var h in Hk)
         {
-            try { HotkeyParser.Parse(_hotkeys[h.Name].Text); }
+            try
+            {
+                var (mods, vk) = HotkeyParser.Parse(_hotkeys[h.Name].Text);
+                // a bare letter / digit / Space would be taken away from every app (nobody could type it any more)
+                if (mods == 0 && !(vk is >= 0x70 and <= 0x87 or 0x2C))
+                { _error.Text = $"Phím tắt '{h.Label}' cần kèm Ctrl, Alt, Shift hoặc Win (ví dụ: Ctrl+Alt+S)."; ShowSection("Phím tắt"); return false; }
+            }
             catch (FormatException) { _error.Text = $"Phím tắt '{h.Label}' không hợp lệ (ví dụ: Ctrl+Alt+S)."; ShowSection("Phím tắt"); return false; }
         }
         var combos = Hk.Select(h => _hotkeys[h.Name].Text.Trim().ToUpperInvariant().Replace(" ", "")).ToList();

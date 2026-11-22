@@ -740,7 +740,7 @@ public sealed class AppController : IDisposable
     {
         try { _store.Save(_s); }
         catch (Exception ex) { Report("Không lưu được cài đặt", ex); }
-        RegisterHotkeys();
+        RegisterHotkeys(withPause: _recording); // saving settings mid-recording must not drop the pause hotkey
         ApplyBridge();
         _main?.SetFolder(_s.OutputDir);
         _main?.UpdateHotkeys(_s);
