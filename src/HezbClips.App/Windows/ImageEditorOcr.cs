@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using HezbClips.Core.Imaging;
 using Windows.Globalization;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
@@ -28,20 +29,49 @@ public sealed partial class ImageEditorWindow
         new(@"(?<!\d)\d{9,}(?!\d)", RegexOptions.Compiled),
     };
 
-    /// <summary>Run OCR on the current picture. Returns null (and tells the user) when it cannot.</summary>
-    async Task<(OcrResult Result, double Scale)?> RunOcrAsync()
+    /// <summary>Best engine: Vietnamese when installed (so diacritics are recognised), else the user's languages, else English.</summary>
+    static OcrEngine? PickEngine()
+    {
+        var vi = OcrEngine.AvailableRecognizerLanguages.FirstOrDefault(l => l.LanguageTag.StartsWith("vi", StringComparison.OrdinalIgnoreCase));
+        if (vi is not null) { var e = OcrEngine.TryCreateFromLanguage(vi); if (e is not null) return e; }
+        return OcrEngine.TryCreateFromUserProfileLanguages() ?? OcrEngine.TryCreateFromLanguage(new Language("en-US"));
+    }
+
+    /// <summary>The part of the picture the user marked for text copying: the crop selection, else the selected shape; null = whole picture.</summary>
+    Rect? OcrRegion()
+    {
+        Rect? r = null;
+        if (_crop is { } c && c.Width >= 8 && c.Height >= 8) r = c;
+        else if (_selected is not null && _items.Contains(_selected)) r = Bounds(_selected);
+        if (r is not { } v) return null;
+        v.Intersect(new Rect(0, 0, _bmp.PixelWidth, _bmp.PixelHeight));
+        return v.IsEmpty || v.Width < 8 || v.Height < 8 ? null : v;
+    }
+
+    /// <summary>Run OCR on the current picture, or only on <paramref name="region"/> (picture pixels). Result positions map back with
+    /// picture = result / Scale + Offset. Returns null (and tells the user) when it cannot.</summary>
+    async Task<(OcrResult Result, double Scale, Point Offset)?> RunOcrAsync(Rect? region = null)
     {
         try
         {
-            var engine = OcrEngine.TryCreateFromUserProfileLanguages() ?? OcrEngine.TryCreateFromLanguage(new Language("en-US"));
-            if (engine is null) { Hud("", "Windows chưa có gói nhận dạng chữ. Thêm ngôn ngữ trong Cài đặt Windows > Thời gian & ngôn ngữ.", ok: false); return null; }
+            var engine = PickEngine();
+            if (engine is null) { Hud("", "Windows chưa có gói nhận dạng chữ. Thêm ngôn ngữ trong Cài đặt Windows > Thời gian & ngôn ngữ.", ok: false); return null; }
 
             BitmapSource src = _bmp;
-            var scale = 1.0;
-            var max = OcrEngine.MaxImageDimension;
-            if (src.PixelWidth > max || src.PixelHeight > max)
+            var offset = new Point(0, 0);
+            if (region is { } rg)
             {
-                scale = (double)max / Math.Max(src.PixelWidth, src.PixelHeight);
+                var ir = new Int32Rect((int)Math.Floor(rg.X), (int)Math.Floor(rg.Y), (int)Math.Ceiling(rg.Width), (int)Math.Ceiling(rg.Height));
+                ir.Width = Math.Min(ir.Width, _bmp.PixelWidth - ir.X); ir.Height = Math.Min(ir.Height, _bmp.PixelHeight - ir.Y);
+                var cb = new CroppedBitmap(src, ir); cb.Freeze(); src = cb; offset = new Point(ir.X, ir.Y);
+            }
+            // small text reads far better when enlarged first (OCR wants glyphs ~20+ px tall)
+            var scale = 1.0;
+            if (src.PixelHeight < 700 && src.PixelWidth < 2400) scale = src.PixelHeight < 350 ? 3 : 2;
+            var max = OcrEngine.MaxImageDimension;
+            if (Math.Max(src.PixelWidth, src.PixelHeight) * scale > max) scale = (double)max / Math.Max(src.PixelWidth, src.PixelHeight);
+            if (Math.Abs(scale - 1) > 0.001)
+            {
                 var tb = new TransformedBitmap(src, new ScaleTransform(scale, scale)); tb.Freeze(); src = tb;
             }
             var enc = new PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(src));
@@ -49,19 +79,23 @@ public sealed partial class ImageEditorWindow
             var decoder = await global::Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(ms.AsRandomAccessStream());
             using var soft = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
             var result = await engine.RecognizeAsync(soft);
-            return (result, scale);
+            return (result, scale, offset);
         }
         catch (Exception ex) { Hud("", "Nhận dạng chữ lỗi: " + ex.Message, ok: false); return null; }
     }
 
     async Task CopyTextAsync(Button? b)
     {
-        Hud("", "Đang nhận dạng chữ…");
-        if (await RunOcrAsync() is not { } r) return;
-        var text = string.Join(Environment.NewLine, r.Result.Lines.Select(l => l.Text));
-        if (string.IsNullOrWhiteSpace(text)) { Hud("", "Không tìm thấy chữ trong ảnh", ok: false); return; }
-        try { Clipboard.SetText(text); Done(b, "Đã copy chữ", $"Đã copy {text.Length} ký tự ({r.Result.Lines.Count} dòng) vào clipboard"); }
-        catch (Exception) { Hud("", "Clipboard đang bận, thử lại", ok: false); }
+        var region = OcrRegion();
+        Hud("", region is null ? "Đang nhận dạng chữ cả ảnh… (muốn chọn vùng: kéo vùng bằng công cụ Cắt rồi bấm lại)" : "Đang nhận dạng chữ trong vùng đã chọn…");
+        if (await RunOcrAsync(region) is not { } r) return;
+        // only letters/digits and normal punctuation: border marks, icons and stray symbols are dropped
+        var text = OcrTextCleaner.Clean(r.Result.Lines.Select(l => l.Words.Select(w => w.Text)), Environment.NewLine);
+        if (string.IsNullOrWhiteSpace(text)) { Hud("", region is null ? "Không tìm thấy chữ trong ảnh" : "Không tìm thấy chữ trong vùng đã chọn", ok: false); return; }
+        var lines = text.Split('\n').Length;
+        var where = region is null ? "cả ảnh" : "vùng chọn";
+        try { Clipboard.SetText(text); Done(b, "Đã copy chữ", $"Đã copy {text.Length} ký tự ({lines} dòng, {where}) vào clipboard"); }
+        catch (Exception) { Hud("", "Clipboard đang bận, thử lại", ok: false); }
     }
 
     async Task RedactAsync(Button? b)
@@ -87,7 +121,7 @@ public sealed partial class ImageEditorWindow
             foreach (var i in hit)
             {
                 var bb = spans[i].Word.BoundingRect;
-                rects.Add(new Rect(bb.X / r.Scale, bb.Y / r.Scale, bb.Width / r.Scale, bb.Height / r.Scale));
+                rects.Add(new Rect(bb.X / r.Scale + r.Offset.X, bb.Y / r.Scale + r.Offset.Y, bb.Width / r.Scale, bb.Height / r.Scale));
             }
         }
         if (rects.Count == 0) { Hud("", "Không thấy email, số điện thoại hay số thẻ trong ảnh", ok: false); return; }
