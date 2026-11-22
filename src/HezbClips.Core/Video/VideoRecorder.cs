@@ -26,11 +26,14 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
 
     /// <summary>Pause: frames and audio are dropped, so the result simply skips the paused stretch.</summary>
     public void Pause() { _paused = true; _clock.Stop(); audio.SetPaused(true); }
-    public void Resume() { audio.SetPaused(false); _clock.Start(); _paused = false; }
+    public void Resume() { audio.SetPaused(false); if (_written > 0) _clock.Start(); _paused = false; }
 
     // Recorded (not paused) time and frames written so far: when the encoder lags, the capture pump falls behind and
     // the video would end up shorter than the audio, so on stop the missing frames are repeated to match the clock.
+    // The clock starts with the first frame (audio / ffmpeg / capture start-up is not video time), or the end would be padded.
     readonly Stopwatch _clock = new();
+    readonly Stopwatch _sinceStart = new();
+    TimeSpan _audioAt, _firstFrameAt;
     long _written;
     ReadOnlyMemory<byte> _lastFrame;
     public bool IsPaused => _paused;
@@ -46,10 +49,11 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
         if (_w < 2 || _h < 2) throw new ArgumentException("region too small", nameof(r));
         _target = TargetSizeCalculator.Calculate(_w, _h, r.Quality);
         _dir = Directory.CreateTempSubdirectory("hezb-rec").FullName;
-        _paused = false; _written = 0; _lastFrame = default; _clock.Restart();
+        _paused = false; _written = 0; _lastFrame = default; _clock.Reset(); _sinceStart.Restart(); _audioAt = _firstFrameAt = default;
         _plan.Clear(); _warnings.Clear(); _monitor = new FrameDropMonitor(); _writeFailed = false;
         _interval = TimeSpan.FromSeconds(1.0 / r.Fps);
         audio.Start(r.Audio, Path.Combine(_dir, "sys.wav"), Path.Combine(_dir, "mic.wav"));
+        _audioAt = _sinceStart.Elapsed; // audio capture is running from here (starting it takes about a second)
         try
         {
             OpenSegment(scaled: r.Mode == RecordMode.Live);
@@ -89,7 +93,11 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
         {
             if (_proc is null || _writeFailed || _paused) return;
             var sw = Stopwatch.StartNew();
-            try { _proc.StdIn.Write(frame.Span); _written++; _lastFrame = frame; }
+            try
+            {
+                _proc.StdIn.Write(frame.Span); _written++; _lastFrame = frame;
+                if (_written == 1) { _firstFrameAt = _sinceStart.Elapsed; _clock.Start(); }
+            }
             catch (IOException) { _writeFailed = true; _warnings.Add("Video encoder stopped accepting frames."); return; }
             _monitor.Report(sw.Elapsed > _interval * 1.5);
             if (_req.Mode == RecordMode.Live && _plan.CurrentScaled && _monitor.ShouldDowngrade)
@@ -120,7 +128,7 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
         }
         // snapshot everything: a new recording may start on this recorder while we are still muxing
         var dir = _dir; var req = _req; var target = _target; var w = _w; var h = _h;
-        var segs = _plan.Segments.ToList();
+        var segs = _plan.Segments.ToList(); var lead = _firstFrameAt - _audioAt;
         var warnings = new List<string>(_warnings); warnings.AddRange(a.Warnings);
 
         Directory.CreateDirectory(s.OutputDir);
@@ -131,7 +139,7 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
         {
             try
             {
-                await RunFfmpeg(FfmpegCommandBuilder.MuxArgs(segs[0].Path, a.SystemWav, a.MicWav, final));
+                await RunFfmpeg(FfmpegCommandBuilder.MuxArgs(segs[0].Path, a.SystemWav, a.MicWav, final, lead));
                 // only when the export size is really bigger than what was recorded
                 if (!segs[0].Scaled && !req.SkipUpscale && (w < target.W || h < target.H))
                 {
@@ -143,14 +151,14 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
         }
         else
         {
-            job = FinalizeAfterUpscale(segs, a, final, dir, target);
+            job = FinalizeAfterUpscale(segs, a, final, dir, target, lead);
         }
         return new RecordResult(final, job, warnings.ToArray());
     }
 
     // Live recording that was downgraded: [scaled segment, unscaled segment]. Upscale the tail in the
     // background queue, then concat + mux and raise Finalized.
-    Guid FinalizeAfterUpscale(IReadOnlyList<Segment> segs, AudioResult a, string final, string dir, (int W, int H) target)
+    Guid FinalizeAfterUpscale(IReadOnlyList<Segment> segs, AudioResult a, string final, string dir, (int W, int H) target, TimeSpan lead)
     {
         var tail = segs[^1].Path;
         var head = segs[0].Path;
@@ -165,7 +173,7 @@ public class VideoRecorder(IVideoFrameSource frames, AudioRecorder audio, Func<I
                 File.WriteAllLines(list, new[] { head, tailUp }.Select(p => "file '" + p.Replace('\\', '/') + "'"));
                 var joined = Path.Combine(dir, "joined.mp4");
                 await RunFfmpeg(FfmpegCommandBuilder.ConcatArgs(list, joined));
-                await RunFfmpeg(FfmpegCommandBuilder.MuxArgs(joined, a.SystemWav, a.MicWav, final));
+                await RunFfmpeg(FfmpegCommandBuilder.MuxArgs(joined, a.SystemWav, a.MicWav, final, lead));
                 Finalized?.Invoke(final);
                 TryDeleteDir(dir);
             }

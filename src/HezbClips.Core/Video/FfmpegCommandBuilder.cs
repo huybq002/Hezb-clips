@@ -20,10 +20,18 @@ public static class FfmpegCommandBuilder
         return $"-y -f rawvideo -pix_fmt bgra -s {srcW}x{srcH} -r {fps} -i - {vf}{EncoderArgs(enc)} -pix_fmt yuv420p -movflags +faststart \"{outPath}\"";
     }
 
-    public static string MuxArgs(string videoPath, string? systemWav, string? micWav, string outPath)
+    /// <param name="audioLead">How much earlier the audio capture began than the first video frame (negative: later).
+    /// The audio is trimmed (or delayed) by that much so picture and sound start together.</param>
+    public static string MuxArgs(string videoPath, string? systemWav, string? micWav, string outPath, TimeSpan audioLead = default)
     {
         var wavs = new[] { systemWav, micWav }.Where(w => w is not null).Cast<string>().ToList();
-        var inputs = $"-i \"{videoPath}\" " + string.Concat(wavs.Select(w => $"-i \"{w}\" "));
+        var shift = audioLead.TotalSeconds switch
+        {
+            >= 0.005 => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"-ss {audioLead.TotalSeconds:0.###} "),
+            <= -0.005 => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"-itsoffset {-audioLead.TotalSeconds:0.###} "),
+            _ => "",
+        };
+        var inputs = $"-i \"{videoPath}\" " + string.Concat(wavs.Select(w => $"{shift}-i \"{w}\" "));
         return wavs.Count switch
         {
             0 => $"-y {inputs}-c copy \"{outPath}\"",

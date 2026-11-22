@@ -34,4 +34,18 @@ public class FfmpegCommandBuilderTests
 
     [Fact] public void Mux_without_audio_just_copies() =>
         Assert.DoesNotContain("amix", FfmpegCommandBuilder.MuxArgs("v.mp4", null, null, "o.mp4"));
+
+    [Fact] public void Mux_trims_audio_that_started_before_the_first_frame()
+    {
+        var a = FfmpegCommandBuilder.MuxArgs("v.mp4", "s.wav", "m.wav", "o.mp4", TimeSpan.FromMilliseconds(367));
+        Assert.Contains("-ss 0.367 -i \"s.wav\"", a);
+        Assert.Contains("-ss 0.367 -i \"m.wav\"", a);
+        Assert.DoesNotContain("-ss 0.367 -i \"v.mp4\"", a);
+    }
+
+    [Fact] public void Mux_delays_audio_that_started_after_the_first_frame() =>
+        Assert.Contains("-itsoffset 0.25 -i \"s.wav\"", FfmpegCommandBuilder.MuxArgs("v.mp4", "s.wav", null, "o.mp4", TimeSpan.FromMilliseconds(-250)));
+
+    [Fact] public void Mux_without_offset_has_no_shift() =>
+        Assert.DoesNotContain("-ss", FfmpegCommandBuilder.MuxArgs("v.mp4", "s.wav", null, "o.mp4"));
 }
