@@ -294,7 +294,22 @@ public sealed class AppController : IDisposable
     {
         if (!_restoreMain || _bar is not null) return; // a pending record bar keeps the main window out of the region
         _restoreMain = false;
-        if (_main is not null) { _main.Show(); _main.RefreshLibrary(); }
+        if (_main is not null)
+        {
+            _main.Show(); _main.RefreshLibrary();
+            // the editor / popup of the picture just taken must stay in front of the main window that comes back
+            if (_editor is { IsVisible: true }) Front(_editor);
+            else if (_popup is { IsVisible: true }) Front(_popup);
+        }
+    }
+
+    ImageEditorWindow? _editor; Window? _popup;
+
+    /// <summary>Bring a window above everything else of this app and give it focus.</summary>
+    static void Front(Window w)
+    {
+        if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
+        w.Topmost = true; w.Topmost = false; w.Activate(); w.Focus();
     }
 
     /// <summary>Captured image: copy / pin / open the editor (or the quick popup when the editor is turned off).</summary>
@@ -509,6 +524,7 @@ public sealed class AppController : IDisposable
     void ShowPopup(string path, bool video, string? note)
     {
         var popup = new PostCapturePopup(path, video, note, TrimVideo, OpenEditor);
+        _popup = popup;
         popup.Show();
     }
 
@@ -717,7 +733,8 @@ public sealed class AppController : IDisposable
         try
         {
             var w = new ImageEditorWindow(imagePath, _s.EditorKeys, _s.AutoCopyAfterCapture);
-            w.Show(); w.Activate();
+            _editor = w;
+            w.Show(); Front(w);
         }
         catch (Exception ex) { Report("Không mở được trình chỉnh sửa", ex); }
     }

@@ -42,14 +42,63 @@ public sealed partial class ImageEditorWindow
         foreach (var h in _handles) { Panel.SetZIndex(h, 12); _ui.Children.Add(h); }
     }
 
+    // the same selection box also serves "Copy chữ": the user drags the area whose text should be copied
+    bool _ocrPick; Tool _ocrPrevTool = Tool.Select;
+    readonly Button _cropOk = new() { Content = Ui.Content(" Cắt (Enter)"), Style = Ui.Style("PrimaryButton"), Padding = new Thickness(14, 7, 14, 7), Margin = new Thickness(0, 0, 8, 0) };
+    readonly Button _ocrOk = new() { Content = Ui.Content(" Copy chữ (Enter)"), Style = Ui.Style("PrimaryButton"), Padding = new Thickness(14, 7, 14, 7), Margin = new Thickness(0, 0, 8, 0), Visibility = Visibility.Collapsed };
+    readonly Button _ocrAll = new() { Content = "Cả ảnh (Ctrl+A)", Padding = new Thickness(14, 7, 14, 7), Margin = new Thickness(0, 0, 8, 0), Visibility = Visibility.Collapsed };
+
     UIElement BuildCropBar()
     {
-        var ok = new Button { Content = Ui.Content(" Cắt (Enter)"), Style = Ui.Style("PrimaryButton"), Padding = new Thickness(14, 7, 14, 7), Margin = new Thickness(0, 0, 8, 0) };
-        var cancel = new Button { Content = Ui.Content(" Hủy (Esc)"), Padding = new Thickness(14, 7, 14, 7) };
-        ok.Click += (_, _) => ApplyCrop();
-        cancel.Click += (_, _) => { CancelCrop(); Hud("", "Đã hủy vùng cắt", ok: false); };
-        _cropBar.Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { _cropSize, ok, cancel } };
+        var cancel = new Button { Content = Ui.Content(" Hủy (Esc)"), Padding = new Thickness(14, 7, 14, 7) };
+        _cropOk.Click += (_, _) => ApplyCrop();
+        _ocrOk.Click += (_, _) => ApplyCrop();
+        _ocrAll.Click += (_, _) => SelectAllForOcr();
+        cancel.Click += (_, _) => { if (_ocrPick) CancelOcrPick(); else { CancelCrop(); Hud("", "Đã hủy vùng cắt", ok: false); } };
+        _cropBar.Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { _cropSize, _cropOk, _ocrOk, _ocrAll, cancel } };
         return _cropBar;
+    }
+
+    void SyncCropBar()
+    {
+        _cropOk.Visibility = _ocrPick ? Visibility.Collapsed : Visibility.Visible;
+        _ocrOk.Visibility = _ocrAll.Visibility = _ocrPick ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>"Copy chữ": let the user drag the area to read, then Enter (or the button) copies its text.</summary>
+    void StartOcrPick()
+    {
+        CommitText();
+        if (_ocrPick) return;
+        _ocrPrevTool = _tool == Tool.Crop ? Tool.Select : _tool;
+        _ocrPick = true;
+        SelectTool(Tool.Crop);
+        SyncCropBar(); DrawCrop();
+        Hud("", "Kéo chọn vùng chữ cần copy · Enter để copy · Ctrl+A chọn cả ảnh · Esc hủy");
+    }
+
+    void EndOcrPick()
+    {
+        if (!_ocrPick) return;
+        _ocrPick = false; SyncCropBar();
+        CancelCrop();
+        SelectTool(_ocrPrevTool);
+    }
+
+    void CancelOcrPick() { EndOcrPick(); Hud("", "Đã hủy chọn vùng chữ", ok: false); }
+
+    void SelectAllForOcr()
+    {
+        _crop = new Rect(0, 0, _canvas.Width, _canvas.Height);
+        _cropDrag = CropDrag.None; DrawCrop();
+    }
+
+    void FinishOcrPick()
+    {
+        Rect? region = _crop is { } r && r.Width >= 8 && r.Height >= 8 ? r : null;
+        var btn = _actions.TryGetValue("ocr", out var b) ? b : null;
+        EndOcrPick();
+        _ = CopyTextAsync(btn, region);
     }
 
     static Point Clamp(Point p, double w, double h) => new(Math.Clamp(p.X, 0, w), Math.Clamp(p.Y, 0, h));
@@ -173,6 +222,7 @@ public sealed partial class ImageEditorWindow
         }
         ShowDragLabel(r);
         _cropSize.Text = $"{Math.Round(r.Width)} × {Math.Round(r.Height)} px";
+        SyncCropBar();
         _cropBar.Visibility = _cropDrag == CropDrag.None ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -185,6 +235,7 @@ public sealed partial class ImageEditorWindow
 
     void ApplyCrop()
     {
+        if (_ocrPick) { FinishOcrPick(); return; }
         if (_crop is not { } r) return;
         var x = (int)Math.Clamp(Math.Round(r.X), 0, _bmp.PixelWidth - 1);
         var y = (int)Math.Clamp(Math.Round(r.Y), 0, _bmp.PixelHeight - 1);

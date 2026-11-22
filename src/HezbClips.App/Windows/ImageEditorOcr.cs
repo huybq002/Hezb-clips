@@ -37,17 +37,6 @@ public sealed partial class ImageEditorWindow
         return OcrEngine.TryCreateFromUserProfileLanguages() ?? OcrEngine.TryCreateFromLanguage(new Language("en-US"));
     }
 
-    /// <summary>The part of the picture the user marked for text copying: the crop selection, else the selected shape; null = whole picture.</summary>
-    Rect? OcrRegion()
-    {
-        Rect? r = null;
-        if (_crop is { } c && c.Width >= 8 && c.Height >= 8) r = c;
-        else if (_selected is not null && _items.Contains(_selected)) r = Bounds(_selected);
-        if (r is not { } v) return null;
-        v.Intersect(new Rect(0, 0, _bmp.PixelWidth, _bmp.PixelHeight));
-        return v.IsEmpty || v.Width < 8 || v.Height < 8 ? null : v;
-    }
-
     /// <summary>Run OCR on the current picture, or only on <paramref name="region"/> (picture pixels). Result positions map back with
     /// picture = result / Scale + Offset. Returns null (and tells the user) when it cannot.</summary>
     async Task<(OcrResult Result, double Scale, Point Offset)?> RunOcrAsync(Rect? region = null)
@@ -84,10 +73,43 @@ public sealed partial class ImageEditorWindow
         catch (Exception ex) { Hud("", "Nhận dạng chữ lỗi: " + ex.Message, ok: false); return null; }
     }
 
-    async Task CopyTextAsync(Button? b)
+    bool _askedVietnamese;
+
+    /// <summary>Without the Vietnamese OCR pack Windows reads accented letters wrongly ("Tdng cong" for "Tổng cộng"): offer to install it once.</summary>
+    async Task OfferVietnameseOcrAsync()
     {
-        var region = OcrRegion();
-        Hud("", region is null ? "Đang nhận dạng chữ cả ảnh… (muốn chọn vùng: kéo vùng bằng công cụ Cắt rồi bấm lại)" : "Đang nhận dạng chữ trong vùng đã chọn…");
+        if (_askedVietnamese) return;
+        if (OcrEngine.AvailableRecognizerLanguages.Any(l => l.LanguageTag.StartsWith("vi", StringComparison.OrdinalIgnoreCase))) return;
+        _askedVietnamese = true;
+        var ask = MessageBox.Show(this,
+            "Windows chưa có gói nhận dạng chữ tiếng Việt, nên chữ có dấu sẽ bị đọc sai.\n\nCài gói OCR tiếng Việt ngay? (cần quyền quản trị và kết nối mạng, mất khoảng một phút)",
+            "Hezb Clips — OCR tiếng Việt", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (ask != MessageBoxResult.Yes) return;
+        Hud("", "Đang cài gói OCR tiếng Việt… (có thể mất một phút)");
+        var code = -1;
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                "-NoProfile -ExecutionPolicy Bypass -Command \"Add-WindowsCapability -Online -Name 'Language.OCR~~~vi-VN~0.0.1.0' | Out-Null; exit $LASTEXITCODE\"")
+            { UseShellExecute = true, Verb = "runas", WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p is not null) { await p.WaitForExitAsync(); code = p.ExitCode; }
+        }
+        catch (System.ComponentModel.Win32Exception) { Hud("", "Đã hủy cài gói OCR tiếng Việt", ok: false); return; }
+        catch (Exception ex) { Hud("", "Không cài được gói OCR: " + ex.Message, ok: false); return; }
+        if (OcrEngine.AvailableRecognizerLanguages.Any(l => l.LanguageTag.StartsWith("vi", StringComparison.OrdinalIgnoreCase))) Hud("", "Đã cài gói OCR tiếng Việt", ok: true);
+        else
+        {
+            Hud("", $"Chưa cài được gói OCR tiếng Việt (mã {code}). Thêm trong Cài đặt Windows > Thời gian & ngôn ngữ > Ngôn ngữ & khu vực.", ok: false);
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:regionlanguage") { UseShellExecute = true }); } catch (Exception) { }
+        }
+    }
+
+    /// <summary>Copy the text of <paramref name="region"/> (picture pixels; null = whole picture) to the clipboard.</summary>
+    async Task CopyTextAsync(Button? b, Rect? region)
+    {
+        await OfferVietnameseOcrAsync();
+        Hud("", region is null ? "Đang nhận dạng chữ cả ảnh…" : "Đang nhận dạng chữ trong vùng đã chọn…");
         if (await RunOcrAsync(region) is not { } r) return;
         // only letters/digits and normal punctuation: border marks, icons and stray symbols are dropped
         var text = OcrTextCleaner.Clean(r.Result.Lines.Select(l => l.Words.Select(w => w.Text)), Environment.NewLine);

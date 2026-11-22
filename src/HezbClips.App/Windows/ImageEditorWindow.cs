@@ -197,7 +197,7 @@ public sealed partial class ImageEditorWindow : Window
         Act("right", " Phải", "Xoay phải (Ctrl+R)", b => Rotate(true, b));
         Act("orig", " Gốc", "Khôi phục ảnh gốc (bỏ cắt, xoay, chú thích). Vẫn hoàn tác được.", b => RestoreOriginal(b));
         Sep();
-        Act("ocr", " Copy chữ", "Nhận dạng chữ trong ảnh (OCR) và copy vào clipboard", b => _ = CopyTextAsync(b));
+        Act("ocr", " Copy chữ", "Nhận dạng chữ trong ảnh (OCR) và copy vào clipboard", b => StartOcrPick());
         Act("redact", " Che nhạy cảm", "Tự tìm email, số điện thoại, số thẻ trong ảnh và làm mờ", b => _ = RedactAsync(b));
         Act("pin", " Ghim", "Ghim ảnh này lên màn hình", b => PinImage(b));
         Sep();
@@ -375,6 +375,7 @@ public sealed partial class ImageEditorWindow : Window
             switch (e.Key)
             {
                 case Key.Z when shift: ClearAll(); e.Handled = true; break;
+                case Key.A when _ocrPick: SelectAllForOcr(); e.Handled = true; break;
                 case Key.Z: Undo(); e.Handled = true; break;
                 case Key.Y: Redo(); e.Handled = true; break;
                 case Key.S: Save(_actions["save"]); e.Handled = true; break;
@@ -388,7 +389,7 @@ public sealed partial class ImageEditorWindow : Window
             }
             return;
         }
-        if (_crop is not null && e.Key == Key.Enter) { ApplyCrop(); e.Handled = true; return; }
+        if ((_crop is not null || _ocrPick) && e.Key == Key.Enter) { ApplyCrop(); e.Handled = true; return; }
         if (_keyToTool.TryGetValue(e.Key, out var tool)) { SelectTool(tool); e.Handled = true; return; }
         if (e.Key >= Key.D1 && e.Key <= Key.D9) { SelectColor(Palette[e.Key - Key.D1].Hex); e.Handled = true; return; }
         if (e.Key >= Key.NumPad1 && e.Key <= Key.NumPad9) { SelectColor(Palette[e.Key - Key.NumPad1].Hex); e.Handled = true; return; }
@@ -403,7 +404,8 @@ public sealed partial class ImageEditorWindow : Window
                 var d = e.Key switch { Key.Left => new Vector(-step, 0), Key.Right => new Vector(step, 0), Key.Up => new Vector(0, -step), _ => new Vector(0, step) };
                 Run(new MoveCmd(this, _selected, d)); e.Handled = true; break;
             case Key.Escape:
-                if (_crop is not null) { CancelCrop(); Hud("", "Đã hủy vùng cắt", ok: false); }
+                if (_ocrPick) CancelOcrPick();
+                else if (_crop is not null) { CancelCrop(); Hud("", "Đã hủy vùng cắt", ok: false); }
                 else if (_selected is not null) { _selected = null; RefreshUi(); }
                 else Close();
                 e.Handled = true; break;
