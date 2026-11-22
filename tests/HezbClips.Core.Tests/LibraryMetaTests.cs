@@ -22,6 +22,18 @@ public class LibraryMetaTests
         File.Delete(p);
     }
 
+    [Fact] public void PruneMissing_forgets_deleted_files_but_not_when_list_is_empty()
+    {
+        var p = Tmp(); var a = new LibraryMetaStore(p);
+        a.ToggleStar("keep.png"); a.ToggleStar("gone.png");
+        a.PruneMissing(Array.Empty<string>());
+        Assert.True(a.IsStarred("gone.png"));
+        a.PruneMissing(new[] { @"C:\x\keep.png" });
+        var b = new LibraryMetaStore(p);
+        Assert.True(b.IsStarred("keep.png")); Assert.False(b.IsStarred("gone.png"));
+        File.Delete(p);
+    }
+
     [Fact] public void Entry_without_star_or_tags_is_dropped()
     {
         var p = Tmp(); var a = new LibraryMetaStore(p);

@@ -55,6 +55,18 @@ public class LibraryMetaStore(string path)
         Prune(filePath, m); Save();
     }
 
+    /// <summary>Forget stars/tags of files that are no longer in the library. Does nothing for an empty list
+    /// (the folder may just be unavailable right now).</summary>
+    public void PruneMissing(IReadOnlyCollection<string> existingPaths)
+    {
+        if (existingPaths.Count == 0) return;
+        var names = new HashSet<string>(existingPaths.Select(Path.GetFileName)!, StringComparer.OrdinalIgnoreCase);
+        var gone = Data.Keys.Where(k => !names.Contains(k)).ToList();
+        if (gone.Count == 0) return;
+        foreach (var k in gone) Data.Remove(k);
+        try { Save(); } catch (IOException) { }
+    }
+
     /// <summary>Split "a, b #c" style input into tags.</summary>
     public static IEnumerable<string> ParseTags(string text) =>
         text.Split(new[] { ',', ';', ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(t => t.Trim().TrimStart('#')).Where(t => t.Length > 0);

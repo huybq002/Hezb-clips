@@ -88,6 +88,9 @@ public sealed class AppController : IDisposable
     /// <summary>Second launch of the app, or the tray: bring up the main window.</summary>
     public void ShowMain() => OpenLibrary();
 
+    /// <summary>A second "HezbClips.exe --edit file" handed its file over: open it in the editor of this running instance.</summary>
+    public void EditFromOtherInstance(string imagePath) { if (File.Exists(imagePath)) OpenEditor(imagePath); else OpenLibrary(); }
+
     /// <summary>Last-resort handler for exceptions nobody caught (logged, shown, app keeps running).</summary>
     public void ReportUnhandled(Exception ex) => Report("Lỗi không mong muốn", ex);
 

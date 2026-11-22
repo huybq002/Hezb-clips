@@ -8,6 +8,7 @@ namespace HezbClips.App;
 public partial class App : Application
 {
     const string MutexName = "HezbClips.SingleInstance", ShowEventName = "HezbClips.ShowMain";
+    static readonly string HandOverFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "HezbClips.edit-request.txt");
     Mutex? _single;
     EventWaitHandle? _show;
     AppController? _controller;
@@ -19,7 +20,14 @@ public partial class App : Application
         if (!created)
         {
             // already running (maybe hidden in the tray): ask it to show its window, then quit
-            try { using var ev = EventWaitHandle.OpenExisting(ShowEventName); ev.Set(); } catch (Exception) { }
+            // (with --edit <file>, the file name is left in a small hand-over file for it to pick up)
+            try
+            {
+                var i = Array.IndexOf(e.Args, "--edit");
+                if (i >= 0 && i + 1 < e.Args.Length) System.IO.File.WriteAllText(HandOverFile, System.IO.Path.GetFullPath(e.Args[i + 1]));
+                using var ev = EventWaitHandle.OpenExisting(ShowEventName); ev.Set();
+            }
+            catch (Exception) { }
             Shutdown(); return;
         }
 
@@ -45,7 +53,11 @@ public partial class App : Application
         var waiter = new Thread(() =>
         {
             while (_show.WaitOne())
-                Dispatcher.BeginInvoke(() => _controller?.ShowMain());
+            {
+                string? file = null;
+                try { if (System.IO.File.Exists(HandOverFile)) { file = System.IO.File.ReadAllText(HandOverFile).Trim(); System.IO.File.Delete(HandOverFile); } } catch (Exception) { }
+                Dispatcher.BeginInvoke(() => { if (!string.IsNullOrEmpty(file)) _controller?.EditFromOtherInstance(file); else _controller?.ShowMain(); });
+            }
         }) { IsBackground = true, Name = "show-main" };
         waiter.Start();
     }

@@ -25,6 +25,7 @@ public sealed class LibraryView : DockPanel
     bool _starOnly;
     // cached directory scan + folder watcher: the disk is only re-read when something really changed
     IReadOnlyList<MediaItem> _all = Array.Empty<MediaItem>();
+    bool _cleaned;
     List<MediaItem> _shown = new();
     int _built;                       // how many of _shown already have a card
     const int Batch = 30;             // cards are created in batches while scrolling, not all at once
@@ -124,6 +125,13 @@ public sealed class LibraryView : DockPanel
         {
             _all = LibraryScanner.Scan(_dir);
             _dirty = false;
+            if (!_cleaned)
+            {
+                _cleaned = true; // once per session: drop stars/tags of deleted files and old thumbnails
+                _meta.PruneMissing(_all.Select(i => i.Path).ToList());
+                var cache = _thumbCache;
+                _ = Task.Run(() => Thumbnails.CleanCache(cache, TimeSpan.FromDays(60)));
+            }
         }
         Rebuild();
     }

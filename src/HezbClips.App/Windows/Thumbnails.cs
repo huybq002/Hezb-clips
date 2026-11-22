@@ -63,6 +63,21 @@ public static class Thumbnails
         catch (Exception) { return null; }
     }
 
+    /// <summary>Delete cached thumbnails not written for a long time (their files were deleted or changed).</summary>
+    public static void CleanCache(string cacheDir, TimeSpan maxAge)
+    {
+        try
+        {
+            if (!Directory.Exists(cacheDir)) return;
+            var cutoff = DateTime.UtcNow - maxAge;
+            foreach (var f in Directory.EnumerateFiles(cacheDir, "*.jpg"))
+            {
+                try { if (File.GetLastWriteTimeUtc(f) < cutoff) File.Delete(f); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception) { /* best effort */ }
+    }
+
     static string Key(MediaItem item) =>
         Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(item.Path + item.Modified.Ticks + item.Size)));
 
