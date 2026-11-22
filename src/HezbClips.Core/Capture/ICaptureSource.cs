@@ -1,13 +1,12 @@
 using Rectangle = System.Drawing.Rectangle;
 using System.Drawing;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using HezbClips.Core.Imaging;
 
 namespace HezbClips.Core.Capture;
 
 public interface ICaptureSource
 {
-    Image<Rgba32> CaptureRegion(Rectangle physicalPixels);
-    Image<Rgba32> CaptureWindow(IntPtr hwnd);
-    Image<Rgba32> CaptureScreen(int monitorIndex);
+    Raster CaptureRegion(Rectangle physicalPixels);
+    Raster CaptureWindow(IntPtr hwnd);
+    Raster CaptureScreen(int monitorIndex);
 }

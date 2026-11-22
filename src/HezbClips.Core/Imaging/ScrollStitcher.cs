@@ -1,6 +1,3 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace HezbClips.Core.Imaging;
 
@@ -18,11 +15,11 @@ public static class ScrollStitcher
     const double StaticRow = 1.5;   // a row this close in both frames did not move
 
     /// <summary>How many rows the content moved up between prev and next: 0 = identical (end of page), NoMatch = could not align.</summary>
-    public static int FindShift(Image<Rgba32> prev, Image<Rgba32> next) => Align(prev, next).Shift;
+    public static int FindShift(Raster prev, Raster next) => Align(prev, next).Shift;
 
     /// <param name="hint">Shift of the previous step. Wheel scrolling moves the same distance every time, so when the
     /// frames are ambiguous (repeated text, blank areas) a shift close to the hint is trusted.</param>
-    public static ScrollStep Align(Image<Rgba32> prev, Image<Rgba32> next, int? hint = null)
+    public static ScrollStep Align(Raster prev, Raster next, int? hint = null)
     {
         if (prev.Width != next.Width || prev.Height != next.Height) return new(NoMatch, 0, 0);
         var a = Luma(prev); var b = Luma(next);
@@ -86,46 +83,46 @@ public static class ScrollStitcher
         return n == 0 ? double.MaxValue : (double)sum / n;
     }
 
-    static byte[][] Luma(Image<Rgba32> img)
+    static byte[][] Luma(Raster img)
     {
         var rows = new byte[img.Height][];
         // leave out the right edge: the scrollbar thumb moves every step
         var usable = Math.Max(ColStep, img.Width - Math.Min(24, img.Width / 20));
         var cols = (usable + ColStep - 1) / ColStep;
-        img.ProcessPixelRows(acc =>
+        for (int y = 0; y < img.Height; y++)
         {
-            for (int y = 0; y < acc.Height; y++)
+            var span = img.GetRow(y); // B,G,R,A bytes
+            var r = new byte[cols];
+            for (int i = 0, x = 0; x < usable && i < cols; x += ColStep, i++)
             {
-                var span = acc.GetRowSpan(y);
-                var r = new byte[cols];
-                for (int i = 0, x = 0; x < usable && i < cols; x += ColStep, i++)
-                    r[i] = (byte)((span[x].R * 299 + span[x].G * 587 + span[x].B * 114) / 1000);
-                rows[y] = r;
+                var p = x * 4;
+                r[i] = (byte)((span[p + 2] * 299 + span[p + 1] * 587 + span[p] * 114) / 1000);
             }
-        });
+            rows[y] = r;
+        }
         return rows;
     }
 
     /// <summary>Rows [y, y+height) of an image as a new image.</summary>
-    public static Image<Rgba32> Rows(Image<Rgba32> img, int y, int height) =>
-        img.Clone(c => c.Crop(new Rectangle(0, y, img.Width, height)));
+    public static Raster Rows(Raster img, int y, int height) =>
+        img.Crop(0, y, img.Width, height);
 
     /// <summary>Join images top to bottom (all the same width).</summary>
-    public static Image<Rgba32> Assemble(IReadOnlyList<Image<Rgba32>> parts)
+    public static Raster Assemble(IReadOnlyList<Raster> parts)
     {
-        var result = new Image<Rgba32>(parts[0].Width, Math.Max(1, parts.Sum(p => p.Height)));
+        var result = new Raster(parts[0].Width, Math.Max(1, parts.Sum(p => p.Height)));
         var y = 0;
         foreach (var part in parts)
         {
             if (part.Height == 0) continue;
-            var at = y; result.Mutate(c => c.DrawImage(part, new Point(0, at), 1f)); y += part.Height;
+            result.DrawImage(part, 0, y); y += part.Height;
         }
         return result;
     }
 
     /// <summary>Stitch frames in order, stopping at the first one that is identical or cannot be aligned.
     /// Returns the tall image and how many frames were used.</summary>
-    public static (Image<Rgba32> Image, int Used) Stitch(IReadOnlyList<Image<Rgba32>> frames)
+    public static (Raster Image, int Used) Stitch(IReadOnlyList<Raster> frames)
     {
         using var acc = new ScrollAccumulator(frames[0]);
         int used = 1;
@@ -141,25 +138,25 @@ public enum AddResult { Added, Identical, NoMatch }
 
 public sealed class ScrollAccumulator : IDisposable
 {
-    readonly Image<Rgba32> _first;
-    Image<Rgba32> _last;
-    readonly List<Image<Rgba32>> _strips = new();
+    readonly Raster _first;
+    Raster _last;
+    readonly List<Raster> _strips = new();
     int? _bottom;
 
-    public ScrollAccumulator(Image<Rgba32> first) { _first = first.Clone(); _last = first.Clone(); Height = first.Height; }
+    public ScrollAccumulator(Raster first) { _first = first.Clone(); _last = first.Clone(); Height = first.Height; }
 
     /// <summary>Total height so far.</summary>
     public int Height { get; private set; }
 
     /// <summary>The frame the next one is matched against (for diagnostics).</summary>
-    public Image<Rgba32> LastFrame => _last;
+    public Raster LastFrame => _last;
 
     /// <summary>Shift of the last added frame (the hint for the next one).</summary>
     public int? LastShift { get; private set; }
 
     /// <summary>Add the next frame. Identical = nothing moved (end of page, or the scroll has not happened yet);
     /// NoMatch = could not align (the frame is not used and the previous frame stays the reference).</summary>
-    public AddResult Add(Image<Rgba32> next)
+    public AddResult Add(Raster next)
     {
         var step = ScrollStitcher.Align(_last, next, LastShift);
         if (step.Shift == 0) return AddResult.Identical;
@@ -173,10 +170,10 @@ public sealed class ScrollAccumulator : IDisposable
         return AddResult.Added;
     }
 
-    public Image<Rgba32> Build()
+    public Raster Build()
     {
         var h = _first.Height; var b = _bottom ?? 0;
-        var parts = new List<Image<Rgba32>> { ScrollStitcher.Rows(_first, 0, h - b) };
+        var parts = new List<Raster> { ScrollStitcher.Rows(_first, 0, h - b) };
         parts.AddRange(_strips);
         if (b > 0) parts.Add(ScrollStitcher.Rows(_last, h - b, b));
         try { return ScrollStitcher.Assemble(parts); }

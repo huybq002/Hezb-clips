@@ -1,8 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using HezbClips.Core.Imaging;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace HezbClips.Core.Tools;
 
@@ -24,7 +22,7 @@ public sealed class PageCaptureSession
     }
 
     /// <summary>Add one slice. Returns the finished page image when this was the last missing slice, otherwise null.</summary>
-    public Image<Rgba32>? Add(string sessionId, int index, int total, byte[] png)
+    public Raster? Add(string sessionId, int index, int total, byte[] png)
     {
         if (string.IsNullOrWhiteSpace(sessionId) || sessionId.Length > 64) throw new ArgumentException("bad session id");
         if (total < 1 || total > MaxParts) throw new ArgumentException("bad part count");
@@ -46,12 +44,12 @@ public sealed class PageCaptureSession
     }
 
     /// <summary>Decode the slices and stack them. Slices must have the same width.</summary>
-    public static Image<Rgba32> Join(IReadOnlyList<byte[]> pngs)
+    public static Raster Join(IReadOnlyList<byte[]> pngs)
     {
-        var images = new List<Image<Rgba32>>();
+        var images = new List<Raster>();
         try
         {
-            foreach (var b in pngs) images.Add(Image.Load<Rgba32>(b));
+            foreach (var b in pngs) images.Add(Raster.Load(b));
             var w = images[0].Width;
             if (images.Any(i => i.Width != w)) throw new InvalidDataException("slices have different widths");
             return ScrollStitcher.Assemble(images);

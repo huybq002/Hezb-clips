@@ -734,11 +734,9 @@ public sealed partial class ImageEditorWindow : Window
         }
         catch (Exception)
         {
-            // e.g. WebP: decode with ImageSharp and hand WPF a PNG
-            using var img = SixLabors.ImageSharp.Image.Load(path);
-            using var ms = new MemoryStream();
-            SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, ms);
-            ms.Position = 0;
+            // e.g. WebP: decode with Skia and hand WPF a PNG
+            using var img = HezbClips.Core.Imaging.Raster.Load(path);
+            using var ms = new MemoryStream(img.ToPng());
             var b = new BitmapImage();
             b.BeginInit(); b.StreamSource = ms; b.CacheOption = BitmapCacheOption.OnLoad; b.EndInit(); b.Freeze();
             return b;

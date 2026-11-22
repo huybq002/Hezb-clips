@@ -197,13 +197,13 @@ public sealed class AppController : IDisposable
         if (_busy || _recording) return;
         _busy = true;
         await HideMainAsync();
-        Dictionary<System.Drawing.Rectangle, SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>>? shots = null;
+        Dictionary<System.Drawing.Rectangle, HezbClips.Core.Imaging.Raster>? shots = null;
         try
         {
             var (imgs, pics) = await Task.Run(() =>
             {
                 var src = new WgcCaptureSource();
-                var d = new Dictionary<System.Drawing.Rectangle, SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>>();
+                var d = new Dictionary<System.Drawing.Rectangle, HezbClips.Core.Imaging.Raster>();
                 var b = new Dictionary<System.Drawing.Rectangle, System.Windows.Media.Imaging.BitmapSource>();
                 foreach (var sc in System.Windows.Forms.Screen.AllScreens)
                 {
@@ -235,12 +235,10 @@ public sealed class AppController : IDisposable
         }
     }
 
-    static System.Windows.Media.Imaging.BitmapSource ToBitmap(SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> img)
+    static System.Windows.Media.Imaging.BitmapSource ToBitmap(HezbClips.Core.Imaging.Raster img)
     {
-        using var bgra = img.CloneAs<SixLabors.ImageSharp.PixelFormats.Bgra32>();
-        var buf = new byte[img.Width * img.Height * 4];
-        bgra.CopyPixelDataTo(buf);
-        var bmp = System.Windows.Media.Imaging.BitmapSource.Create(img.Width, img.Height, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, buf, img.Width * 4);
+        var bmp = System.Windows.Media.Imaging.BitmapSource.Create(img.Width, img.Height, 96, 96,
+            System.Windows.Media.PixelFormats.Pbgra32, null, img.Bitmap.GetPixels(), img.Stride * img.Height, img.Stride);
         bmp.Freeze();
         return bmp;
     }
@@ -325,8 +323,8 @@ public sealed class AppController : IDisposable
         }
         catch (Exception)
         {
-            // WebP and other formats WPF cannot decode: go through ImageSharp
-            try { using var img = SixLabors.ImageSharp.Image.Load<SixLabors.ImageSharp.PixelFormats.Rgba32>(path); bmp = ToBitmap(img); }
+            // WebP and other formats WPF cannot decode: go through Skia
+            try { using var img = HezbClips.Core.Imaging.Raster.Load(path); bmp = ToBitmap(img); }
             catch (Exception) { return false; }
         }
         for (int i = 0; i < 3; i++)
@@ -571,7 +569,7 @@ public sealed class AppController : IDisposable
     }
 
     /// <summary>A finished full-page image arrived from the extension (worker thread): save it and open it like any capture.</summary>
-    void OnBrowserPage(SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> img, string title)
+    void OnBrowserPage(HezbClips.Core.Imaging.Raster img, string title)
     {
         try
         {
@@ -580,7 +578,7 @@ public sealed class AppController : IDisposable
             {
                 Directory.CreateDirectory(_s.OutputDir);
                 path = HezbClips.Core.Output.FileNamer.Next(_s.OutputDir, "Page", "png", DateTime.Now, File.Exists);
-                SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, path);
+                img.SavePng(path);
                 var (w, h) = (img.Width, img.Height);
                 _app.Dispatcher.BeginInvoke(() => Toast.Show($"Đã nhận ảnh cả trang {w} × {h} px" + (title.Length > 0 ? $" — {title}" : "")));
             }
@@ -676,7 +674,7 @@ public sealed class AppController : IDisposable
             {
                 Directory.CreateDirectory(_s.OutputDir);
                 var path = HezbClips.Core.Output.FileNamer.Next(_s.OutputDir, "Scroll", "png", DateTime.Now, File.Exists);
-                SixLabors.ImageSharp.ImageExtensions.SaveAsPng(result, path);
+                result.SavePng(path);
                 _app.Dispatcher.BeginInvoke(() => Toast.Show(reason == "trang không cuộn"
                     ? "Vùng này không cuộn được. Hãy chọn vùng nội dung của trang (không gồm thanh địa chỉ) rồi thử lại."
                     : $"Đã chụp {result.Height} px ({reason})"));

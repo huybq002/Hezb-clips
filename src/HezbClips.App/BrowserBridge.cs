@@ -4,8 +4,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using HezbClips.Core.Tools;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using HezbClips.Core.Imaging;
 
 namespace HezbClips.App;
 
@@ -15,7 +14,7 @@ public sealed class BrowserBridge : IDisposable
 {
     public const int Port = 47831;
     readonly Func<string> _token;
-    readonly Action<Image<Rgba32>, string> _onPage;
+    readonly Action<Raster, string> _onPage;
     readonly PageCaptureSession _session = new();
     HttpListener? _listener;
 
@@ -23,7 +22,7 @@ public sealed class BrowserBridge : IDisposable
     public string Status { get; private set; } = "Đang tắt";
 
     /// <param name="onPage">Called (on a worker thread) with a finished page image and its title. The callee disposes the image.</param>
-    public BrowserBridge(Func<string> token, Action<Image<Rgba32>, string> onPage) { _token = token; _onPage = onPage; }
+    public BrowserBridge(Func<string> token, Action<Raster, string> onPage) { _token = token; _onPage = onPage; }
 
     public bool Start()
     {
@@ -92,9 +91,9 @@ public sealed class BrowserBridge : IDisposable
                 if (req.ContentLength64 > PageCaptureSession.MaxPartBytes) { Reply(res, 413, "too large"); return; }
                 using var ms = new MemoryStream();
                 req.InputStream.CopyTo(ms);
-                Image<Rgba32>? done;
+                Raster? done;
                 try { done = _session.Add(q["s"] ?? "", index, total, ms.ToArray()); }
-                catch (Exception ex) when (ex is ArgumentException or InvalidDataException or UnknownImageFormatException or InvalidImageContentException)
+                catch (Exception ex) when (ex is ArgumentException or InvalidDataException)
                 { Reply(res, 400, ex.Message); return; }
                 if (done is not null) _onPage(done, q["title"] ?? "");
                 Reply(res, 200, done is null ? "{\"done\":false}" : "{\"done\":true}");

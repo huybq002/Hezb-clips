@@ -8,7 +8,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using HezbClips.Core.Output;
 using HezbClips.Core.Video;
-using SixLabors.ImageSharp.Processing;
 
 namespace HezbClips.App.Windows;
 
@@ -35,7 +34,7 @@ public static class Thumbnails
         try { if (File.Exists(cached)) return Decode(cached); } catch (Exception) { /* damaged cache entry: rebuild */ }
         ImageSource? bmp;
         try { bmp = Decode(item.Path); }
-        catch (Exception) { bmp = ViaImageSharp(item.Path); }
+        catch (Exception) { bmp = ViaSkia(item.Path); }
         if (bmp is BitmapSource src) SaveCache(src, cached);
         return bmp;
     }
@@ -47,15 +46,13 @@ public static class Thumbnails
         b.Freeze(); return b;
     }
 
-    static ImageSource? ViaImageSharp(string path)
+    static ImageSource? ViaSkia(string path)
     {
         try
         {
-            using var img = SixLabors.ImageSharp.Image.Load(path);
-            img.Mutate(c => c.Resize(Width, 0));
-            using var ms = new MemoryStream();
-            SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, ms);
-            ms.Position = 0;
+            using var full = HezbClips.Core.Imaging.Raster.Load(path);
+            using var img = full.Resize(Width, Math.Max(1, (int)Math.Round(full.Height * (double)Width / full.Width)));
+            using var ms = new MemoryStream(img.ToPng());
             var b = new BitmapImage();
             b.BeginInit(); b.StreamSource = ms; b.CacheOption = BitmapCacheOption.OnLoad; b.EndInit(); b.Freeze();
             return b;

@@ -1,7 +1,6 @@
 using Rectangle = System.Drawing.Rectangle;
 using HezbClips.Core.Capture;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using HezbClips.Core.Imaging;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 
@@ -9,7 +8,7 @@ namespace HezbClips.Capture;
 
 public class WgcCaptureSource : ICaptureSource
 {
-    public Image<Rgba32> CaptureScreen(int monitorIndex)
+    public Raster CaptureScreen(int monitorIndex)
     {
         var mons = Native.Monitors();
         if (monitorIndex < 0 || monitorIndex >= mons.Count) throw new ArgumentOutOfRangeException(nameof(monitorIndex));
@@ -24,9 +23,9 @@ public class WgcCaptureSource : ICaptureSource
         return 0;
     }
 
-    public Image<Rgba32> CaptureWindow(IntPtr hwnd) => Grab(WgcInterop.ItemForWindow(hwnd), null);
+    public Raster CaptureWindow(IntPtr hwnd) => Grab(WgcInterop.ItemForWindow(hwnd), null);
 
-    public Image<Rgba32> CaptureRegion(Rectangle physicalPixels)
+    public Raster CaptureRegion(Rectangle physicalPixels)
     {
         var (h, bounds) = Native.MonitorContaining(physicalPixels);
         var rel = Rectangle.Intersect(
@@ -36,7 +35,7 @@ public class WgcCaptureSource : ICaptureSource
         return Grab(WgcInterop.ItemForMonitor(h), rel);
     }
 
-    static Image<Rgba32> Grab(GraphicsCaptureItem item, Rectangle? crop)
+    static Raster Grab(GraphicsCaptureItem item, Rectangle? crop)
     {
         using var dev = WgcInterop.CreateDevice();
         var winDev = WgcInterop.ToWinRt(dev);
@@ -54,7 +53,7 @@ public class WgcCaptureSource : ICaptureSource
         var buf = new byte[r.Width * r.Height * 4];
         using var reader = new FrameReader(dev);
         reader.Read(frame, r, buf);
-        using var bgra = Image.LoadPixelData<Bgra32>(buf, r.Width, r.Height);
-        return bgra.CloneAs<Rgba32>();
+        for (int i = 3; i < buf.Length; i += 4) buf[i] = 255; // a desktop capture is opaque
+        return Raster.FromBgra(buf, r.Width, r.Height);
     }
 }

@@ -1,7 +1,5 @@
 using HezbClips.Core.Hardware;
 using HezbClips.Core.Imaging;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace HezbClips.Core.Tests;
 
@@ -10,12 +8,12 @@ public class ImageResizerTests
     class SpyUpscaler : IImageUpscaler
     {
         public int Calls;
-        public Image<Rgba32> Upscale(Image<Rgba32> s, int w, int h) { Calls++; return new Image<Rgba32>(w, h); }
+        public Raster Upscale(Raster s, int w, int h) { Calls++; return new Raster(w, h); }
     }
 
     [Fact] public void Lanczos_gives_exact_size()
     {
-        using var src = new Image<Rgba32>(100, 50);
+        using var src = new Raster(100, 50);
         using var r = new LanczosUpscaler().Upscale(src, 200, 100);
         Assert.Equal((200, 100), (r.Width, r.Height));
     }
@@ -34,7 +32,7 @@ public class ImageResizerTests
 
     [Fact] public void Fit_downscale_never_calls_ai()
     {
-        var spy = new SpyUpscaler(); using var src = new Image<Rgba32>(3840, 2160);
+        var spy = new SpyUpscaler(); using var src = new Raster(3840, 2160);
         using var r = ImageResizer.Fit(src, 1920, 1080, spy);
         Assert.Equal(0, spy.Calls);
         Assert.Equal((1920, 1080), (r.Width, r.Height));
@@ -42,7 +40,7 @@ public class ImageResizerTests
 
     [Fact] public void Fit_upscale_calls_ai_once()
     {
-        var spy = new SpyUpscaler(); using var src = new Image<Rgba32>(1280, 720);
+        var spy = new SpyUpscaler(); using var src = new Raster(1280, 720);
         ImageResizer.Fit(src, 3840, 2160, spy).Dispose();
         Assert.Equal(1, spy.Calls);
     }

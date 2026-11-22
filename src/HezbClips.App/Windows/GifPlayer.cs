@@ -6,15 +6,10 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.Formats.Gif;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace HezbClips.App.Windows;
 
-/// <summary>Plays an animated GIF in a loop with no click needed. Frames are decoded fully composed (ImageSharp),
+/// <summary>Plays an animated GIF in a loop with no click needed. Frames are decoded fully composed (Skia),
 /// shrunk to the display size, and capped to the first few seconds to keep memory small.</summary>
 public sealed class GifPlayer : System.Windows.Controls.Image
 {
@@ -67,19 +62,17 @@ public sealed class GifPlayer : System.Windows.Controls.Image
 
     List<(BitmapSource, int)> Decode()
     {
-        var opts = new DecoderOptions { MaxFrames = (uint)_maxFrames };
-        using var img = SixLabors.ImageSharp.Image.Load<Bgra32>(opts, _path);
-        if (img.Width > _width) img.Mutate(c => c.Resize(_width, 0));
-        var list = new List<(BitmapSource, int)>(img.Frames.Count);
-        var buf = new byte[img.Width * img.Height * 4];
-        for (int i = 0; i < img.Frames.Count; i++)
+        var decoded = HezbClips.Core.Imaging.GifFrames.Decode(_path, _maxFrames, _width);
+        var list = new List<(BitmapSource, int)>(decoded.Count);
+        foreach (var (raster, ms) in decoded)
         {
-            var f = img.Frames[i];
-            f.CopyPixelDataTo(buf);
-            var bmp = BitmapSource.Create(img.Width, img.Height, 96, 96, PixelFormats.Bgra32, null, buf, img.Width * 4);
-            bmp.Freeze();
-            var delay = f.Metadata.GetGifMetadata().FrameDelay; // 1/100 s
-            list.Add((bmp, Math.Max(2, delay) * 10));
+            using (raster)
+            {
+                var bmp = BitmapSource.Create(raster.Width, raster.Height, 96, 96, PixelFormats.Pbgra32, null,
+                    raster.Bitmap.GetPixels(), raster.Stride * raster.Height, raster.Stride);
+                bmp.Freeze();
+                list.Add((bmp, ms));
+            }
         }
         return list;
     }

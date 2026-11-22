@@ -1,3 +1,4 @@
+using HezbClips.Core.Imaging;
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
@@ -99,10 +100,10 @@ public class ToolsTests
 
 public class PageCaptureSessionTests
 {
-    static byte[] Png(int w, int h, SixLabors.ImageSharp.PixelFormats.Rgba32 c)
+    static byte[] Png(int w, int h, Rgba c)
     {
-        using var img = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(w, h, c);
-        using var ms = new MemoryStream(); SixLabors.ImageSharp.ImageExtensions.SaveAsPng(img, ms); return ms.ToArray();
+        using var img = new Raster(w, h, c);
+        return img.ToPng();
     }
 
     [Fact] public void Slices_in_any_order_become_one_tall_image()
@@ -112,9 +113,9 @@ public class PageCaptureSessionTests
         Assert.Null(s.Add("a", 0, 3, Png(50, 10, new(255, 0, 0, 255))));
         using var img = s.Add("a", 1, 3, Png(50, 20, new(0, 255, 0, 255)))!;
         Assert.Equal(60, img.Height);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 0, 0, 255), img[5, 5]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 255, 0, 255), img[5, 15]);
-        Assert.Equal(new SixLabors.ImageSharp.PixelFormats.Rgba32(0, 0, 255, 255), img[5, 45]);
+        Assert.Equal(new Rgba(255, 0, 0, 255), img[5, 5]);
+        Assert.Equal(new Rgba(0, 255, 0, 255), img[5, 15]);
+        Assert.Equal(new Rgba(0, 0, 255, 255), img[5, 45]);
     }
 
     [Fact] public void Sessions_do_not_mix_and_bad_input_is_rejected()

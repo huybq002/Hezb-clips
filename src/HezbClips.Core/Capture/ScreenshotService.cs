@@ -3,8 +3,6 @@ using System.Drawing;
 using HezbClips.Core.Imaging;
 using HezbClips.Core.Output;
 using HezbClips.Core.Settings;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace HezbClips.Core.Capture;
 
@@ -15,7 +13,7 @@ public class ScreenshotService(ICaptureSource src, IImageUpscaler ai, AppSetting
     public Task<string> TakeWindowAsync(IntPtr hwnd) => SaveAsync(src.CaptureWindow(hwnd));
 
     /// <summary>Scale to the export quality and save. Takes ownership of the image.</summary>
-    public async Task<string> SaveAsync(Image<Rgba32> shot)
+    public async Task<string> SaveAsync(Raster shot)
     {
         using (shot)
         {
@@ -24,12 +22,15 @@ public class ScreenshotService(ICaptureSource src, IImageUpscaler ai, AppSetting
             Directory.CreateDirectory(s.OutputDir);
             var ext = s.ImageFormat switch { ImageFormat.WebP => "webp", ImageFormat.Jpeg => "jpg", _ => "png" };
             var path = FileNamer.Next(s.OutputDir, "Clip", ext, DateTime.Now, File.Exists);
-            switch (s.ImageFormat)
+            await Task.Run(() =>
             {
-                case ImageFormat.WebP: await fitted.SaveAsWebpAsync(path); break;
-                case ImageFormat.Jpeg: await fitted.SaveAsJpegAsync(path); break;
-                default: await fitted.SaveAsPngAsync(path); break;
-            }
+                switch (s.ImageFormat)
+                {
+                    case ImageFormat.WebP: fitted.SaveWebp(path); break;
+                    case ImageFormat.Jpeg: fitted.SaveJpeg(path); break;
+                    default: fitted.SavePng(path); break;
+                }
+            });
             return path;
         }
     }

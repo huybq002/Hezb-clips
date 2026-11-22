@@ -1,5 +1,3 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace HezbClips.Core.Imaging;
 
@@ -12,9 +10,9 @@ public static class ScrollCapture
     /// <param name="scroll">Scroll the page down by this many wheel notches.</param>
     /// <param name="cancelled">Polled each step; true stops early and keeps what was captured.</param>
     /// <param name="sleep">Pause between captures (milliseconds), so tests can run without waiting.</param>
-    public static (Image<Rgba32> Image, int Steps, string EndReason) Run(
-        Func<Image<Rgba32>> capture, Action<int> scroll, int notches, Func<bool> cancelled, Action<int> sleep, Options? options = null,
-        Action<string>? log = null, Action<Image<Rgba32>, Image<Rgba32>>? onNoMatch = null, Action? scrollFallback = null)
+    public static (Raster Image, int Steps, string EndReason) Run(
+        Func<Raster> capture, Action<int> scroll, int notches, Func<bool> cancelled, Action<int> sleep, Options? options = null,
+        Action<string>? log = null, Action<Raster, Raster>? onNoMatch = null, Action? scrollFallback = null)
     {
         var o = options ?? new Options();
         using var first = capture();
@@ -59,7 +57,7 @@ public static class ScrollCapture
     }
 
     /// <summary>Capture until two frames in a row are identical (the scroll animation has finished).</summary>
-    static Image<Rgba32> WaitForStill(Func<Image<Rgba32>> capture, Action<int> sleep, int settle)
+    static Raster WaitForStill(Func<Raster> capture, Action<int> sleep, int settle)
     {
         sleep(250);
         var prev = capture();
