@@ -65,6 +65,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _controller?.Dispose();
+        HezbClips.App.Windows.OcrEngines.Dispose();
         _single?.Dispose();
         base.OnExit(e);
     }

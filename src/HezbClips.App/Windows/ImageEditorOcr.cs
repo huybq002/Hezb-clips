@@ -11,13 +11,10 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using HezbClips.Core.Imaging;
-using Windows.Globalization;
-using Windows.Graphics.Imaging;
-using Windows.Media.Ocr;
 
 namespace HezbClips.App.Windows;
 
-/// <summary>Text recognition with the built-in Windows OCR: copy text out of the image, or auto-mask sensitive data.</summary>
+/// <summary>Text recognition with Tesseract (Vietnamese + English), falling back to the built-in Windows OCR: copy text out of the image, or auto-mask sensitive data.</summary>
 public sealed partial class ImageEditorWindow
 {
     // email, VN/intl phone, card-like groups, long digit runs (account / ID numbers)
@@ -29,21 +26,15 @@ public sealed partial class ImageEditorWindow
         new(@"(?<!\d)\d{9,}(?!\d)", RegexOptions.Compiled),
     };
 
-    /// <summary>Best engine: Vietnamese when installed (so diacritics are recognised), else the user's languages, else English.</summary>
-    static OcrEngine? PickEngine()
-    {
-        var vi = OcrEngine.AvailableRecognizerLanguages.FirstOrDefault(l => l.LanguageTag.StartsWith("vi", StringComparison.OrdinalIgnoreCase));
-        if (vi is not null) { var e = OcrEngine.TryCreateFromLanguage(vi); if (e is not null) return e; }
-        return OcrEngine.TryCreateFromUserProfileLanguages() ?? OcrEngine.TryCreateFromLanguage(new Language("en-US"));
-    }
-
     /// <summary>Run OCR on the current picture, or only on <paramref name="region"/> (picture pixels). Result positions map back with
     /// picture = result / Scale + Offset. Returns null (and tells the user) when it cannot.</summary>
-    async Task<(OcrResult Result, double Scale, Point Offset)?> RunOcrAsync(Rect? region = null)
+    async Task<(IReadOnlyList<OcrLineInfo> Lines, double Scale, Point Offset)?> RunOcrAsync(Rect? region = null)
     {
         try
         {
-            var engine = PickEngine();
+            var progress = new Progress<double>(v => { if (v - _ocrShown >= 0.1 || v >= 1) { _ocrShown = v; Hud("", $"Đang tải dữ liệu OCR tiếng Việt… {(int)(v * 100)}%"); } });
+            _ocrShown = -1;
+            var engine = await OcrEngines.GetAsync(progress, msg => Hud("", msg, ok: false));
             if (engine is null) { Hud("", "Windows chưa có gói nhận dạng chữ. Thêm ngôn ngữ trong Cài đặt Windows > Thời gian & ngôn ngữ.", ok: false); return null; }
 
             BitmapSource src = _bmp;
@@ -54,65 +45,50 @@ public sealed partial class ImageEditorWindow
                 ir.Width = Math.Min(ir.Width, _bmp.PixelWidth - ir.X); ir.Height = Math.Min(ir.Height, _bmp.PixelHeight - ir.Y);
                 var cb = new CroppedBitmap(src, ir); cb.Freeze(); src = cb; offset = new Point(ir.X, ir.Y);
             }
-            // small text reads far better when enlarged first (OCR wants glyphs ~20+ px tall)
-            var scale = 1.0;
-            if (src.PixelHeight < 700 && src.PixelWidth < 2400) scale = src.PixelHeight < 350 ? 3 : 2;
-            var max = OcrEngine.MaxImageDimension;
-            if (Math.Max(src.PixelWidth, src.PixelHeight) * scale > max) scale = (double)max / Math.Max(src.PixelWidth, src.PixelHeight);
-            if (Math.Abs(scale - 1) > 0.001)
+            // small text reads far better when enlarged first, big text does not: engines that report confidence try 1x, 2x, 3x
+            // only while unsure; the others use one fixed scale
+            IReadOnlyList<OcrLineInfo>? best = null; var bestScale = 1.0; var bestConf = -1.0;
+            var plan = OcrScaling.Candidates(src.PixelWidth, src.PixelHeight, engine.MaxImageDimension);
+            var fixedScale = OcrScaling.Fixed(src.PixelWidth, src.PixelHeight, engine.MaxImageDimension);
+            foreach (var k in plan)
             {
-                var tb = new TransformedBitmap(src, new ScaleTransform(scale, scale)); tb.Freeze(); src = tb;
+                var scale = k;
+                var lines = await engine.RecognizeAsync(EncodePng(src, scale));
+                var conf = OcrScaling.MeanConfidence(lines);
+                if (conf is null) // no confidence from this engine: one fixed scale
+                {
+                    if (Math.Abs(fixedScale - scale) > 0.001) lines = await engine.RecognizeAsync(EncodePng(src, scale = fixedScale));
+                    return (lines, scale, offset);
+                }
+                if (conf > bestConf) { best = lines; bestScale = scale; bestConf = conf.Value; }
+                if (conf >= OcrScaling.GoodEnough) break;
             }
-            var enc = new PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(src));
-            using var ms = new MemoryStream(); enc.Save(ms); ms.Position = 0;
-            var decoder = await global::Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(ms.AsRandomAccessStream());
-            using var soft = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-            var result = await engine.RecognizeAsync(soft);
-            return (result, scale, offset);
+            return (best ?? Array.Empty<OcrLineInfo>(), bestScale, offset);
         }
-        catch (Exception ex) { Hud("", "Nhận dạng chữ lỗi: " + ex.Message, ok: false); return null; }
+        catch (Exception ex) { Hud("", "Nhận dạng chữ lỗi: " + ex.Message, ok: false); return null; }
     }
 
-    bool _askedVietnamese;
+    double _ocrShown;
 
-    /// <summary>Without the Vietnamese OCR pack Windows reads accented letters wrongly ("Tdng cong" for "Tổng cộng"): offer to install it once.</summary>
-    async Task OfferVietnameseOcrAsync()
+    /// <summary>PNG bytes of the picture enlarged by <paramref name="scale"/> (1 = as is).</summary>
+    static byte[] EncodePng(BitmapSource src, double scale)
     {
-        if (_askedVietnamese) return;
-        if (OcrEngine.AvailableRecognizerLanguages.Any(l => l.LanguageTag.StartsWith("vi", StringComparison.OrdinalIgnoreCase))) return;
-        _askedVietnamese = true;
-        var ask = MessageBox.Show(this,
-            "Windows chưa có gói nhận dạng chữ tiếng Việt, nên chữ có dấu sẽ bị đọc sai.\n\nCài gói OCR tiếng Việt ngay? (cần quyền quản trị và kết nối mạng, mất khoảng một phút)",
-            "Hezb Clips — OCR tiếng Việt", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (ask != MessageBoxResult.Yes) return;
-        Hud("", "Đang cài gói OCR tiếng Việt… (có thể mất một phút)");
-        var code = -1;
-        try
+        if (Math.Abs(scale - 1) > 0.001)
         {
-            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
-                "-NoProfile -ExecutionPolicy Bypass -Command \"Add-WindowsCapability -Online -Name 'Language.OCR~~~vi-VN~0.0.1.0' | Out-Null; exit $LASTEXITCODE\"")
-            { UseShellExecute = true, Verb = "runas", WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden };
-            using var p = System.Diagnostics.Process.Start(psi);
-            if (p is not null) { await p.WaitForExitAsync(); code = p.ExitCode; }
+            var tb = new TransformedBitmap(src, new ScaleTransform(scale, scale)); tb.Freeze(); src = tb;
         }
-        catch (System.ComponentModel.Win32Exception) { Hud("", "Đã hủy cài gói OCR tiếng Việt", ok: false); return; }
-        catch (Exception ex) { Hud("", "Không cài được gói OCR: " + ex.Message, ok: false); return; }
-        if (OcrEngine.AvailableRecognizerLanguages.Any(l => l.LanguageTag.StartsWith("vi", StringComparison.OrdinalIgnoreCase))) Hud("", "Đã cài gói OCR tiếng Việt", ok: true);
-        else
-        {
-            Hud("", $"Chưa cài được gói OCR tiếng Việt (mã {code}). Thêm trong Cài đặt Windows > Thời gian & ngôn ngữ > Ngôn ngữ & khu vực.", ok: false);
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:regionlanguage") { UseShellExecute = true }); } catch (Exception) { }
-        }
+        var enc = new PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(src));
+        using var ms = new MemoryStream(); enc.Save(ms);
+        return ms.ToArray();
     }
 
     /// <summary>Copy the text of <paramref name="region"/> (picture pixels; null = whole picture) to the clipboard.</summary>
     async Task CopyTextAsync(Button? b, Rect? region)
     {
-        await OfferVietnameseOcrAsync();
         Hud("", region is null ? "Đang nhận dạng chữ cả ảnh…" : "Đang nhận dạng chữ trong vùng đã chọn…");
         if (await RunOcrAsync(region) is not { } r) return;
         // only letters/digits and normal punctuation: border marks, icons and stray symbols are dropped
-        var text = OcrTextCleaner.Clean(r.Result.Lines.Select(l => l.Words.Select(w => w.Text)), Environment.NewLine);
+        var text = OcrTextCleaner.Clean(r.Lines.Select(l => l.Words.Select(w => w.Text)), Environment.NewLine);
         if (string.IsNullOrWhiteSpace(text)) { Hud("", region is null ? "Không tìm thấy chữ trong ảnh" : "Không tìm thấy chữ trong vùng đã chọn", ok: false); return; }
         var lines = text.Split('\n').Length;
         var where = region is null ? "cả ảnh" : "vùng chọn";
@@ -125,10 +101,10 @@ public sealed partial class ImageEditorWindow
         Hud("", "Đang tìm thông tin nhạy cảm…");
         if (await RunOcrAsync() is not { } r) return;
         var rects = new List<Rect>();
-        foreach (var line in r.Result.Lines)
+        foreach (var line in r.Lines)
         {
             // line text with a record of where each word starts, so a regex hit maps back to word boxes
-            var sb = new StringBuilder(); var spans = new List<(int Start, int End, OcrWord Word)>();
+            var sb = new StringBuilder(); var spans = new List<(int Start, int End, OcrWordInfo Word)>();
             foreach (var w in line.Words)
             {
                 if (sb.Length > 0) sb.Append(' ');
@@ -142,7 +118,7 @@ public sealed partial class ImageEditorWindow
                         if (spans[i].Start < m.Index + m.Length && spans[i].End > m.Index) hit.Add(i);
             foreach (var i in hit)
             {
-                var bb = spans[i].Word.BoundingRect;
+                var bb = spans[i].Word.Box;
                 rects.Add(new Rect(bb.X / r.Scale + r.Offset.X, bb.Y / r.Scale + r.Offset.Y, bb.Width / r.Scale, bb.Height / r.Scale));
             }
         }
