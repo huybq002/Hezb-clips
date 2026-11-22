@@ -34,4 +34,11 @@
     <PackageReference Include="Tesseract" Version="5.2.0" />
   </ItemGroup>
 
+  <!-- the Tesseract package also ships 32-bit natives; the app is win-x64 only, so leave them out of build and publish output -->
+  <Target Name="DropTesseractX86" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <_DropX86 Include="@(None)" Condition="$([System.String]::new('%(None.Link)').StartsWith('x86'))" />
+      <None Remove="@(_DropX86)" />
+    </ItemGroup>
+  </Target>
 </Project>

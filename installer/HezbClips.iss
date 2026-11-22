@@ -9,6 +9,10 @@
 #define FfmpegUrl "https://github.com/GyanD/codexffmpeg/releases/download/8.1.1/ffmpeg-8.1.1-essentials_build.zip"
 #define FfmpegSha256 "6f58ce889f59c311410f7d2b18895b33c03456463486f3b1ebc93d97a0f54541"
 #define FfmpegDir "ffmpeg-8.1.1-essentials_build"
+; OCR language data (Apache-2.0, tessdata_fast tag 4.1.0), about 4.6 MB; same files and hashes the app downloads by itself on first use
+#define OcrBase "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/"
+#define VieSha256 "79df64caf7bcfb2a27df5042ecb6121e196eada34da774956995747636d5bfa1"
+#define EngSha256 "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
 
 [Setup]
 AppId={{B7A4C1E2-5D3F-4F7A-9C61-2E8D0A4B7F10}
@@ -37,6 +41,7 @@ RestartApplications=no
 
 [Tasks]
 Name: "ffmpeg"; Description: "Download ffmpeg {#FfmpegVersion} (needed for video recording, GIF and upscaling; about 110 MB)"; GroupDescription: "Components:"
+Name: "ocrdata"; Description: "Download OCR data for Vietnamese and English text (Copy text, hide sensitive data; about 5 MB)"; GroupDescription: "Components:"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
@@ -88,7 +93,33 @@ begin
       mbInformation, MB_OK, IDOK);
 end;
 
+procedure InstallOcrData;
+var
+  dest: String;
+  ok: Boolean;
+begin
+  dest := ExpandConstant('{app}\tools\tessdata');
+  if FileExists(dest + '\vie.traineddata') and FileExists(dest + '\eng.traineddata') then exit; // update: keep what is already there
+  ok := False;
+  WizardForm.StatusLabel.Caption := 'Downloading OCR data...';
+  WizardForm.FileNameLabel.Caption := '';
+  try
+    DownloadTemporaryFile('{#OcrBase}vie.traineddata', 'vie.traineddata', '{#VieSha256}', nil);
+    DownloadTemporaryFile('{#OcrBase}eng.traineddata', 'eng.traineddata', '{#EngSha256}', nil);
+    ForceDirectories(dest);
+    CopyFile(ExpandConstant('{tmp}\vie.traineddata'), dest + '\vie.traineddata', False);
+    CopyFile(ExpandConstant('{tmp}\eng.traineddata'), dest + '\eng.traineddata', False);
+    ok := FileExists(dest + '\vie.traineddata') and FileExists(dest + '\eng.traineddata');
+  except
+    Log('OCR data download failed: ' + GetExceptionMessage);
+  end;
+  if not ok and not WizardSilent then
+    SuppressibleMsgBox('The OCR data could not be downloaded or verified. Hezb Clips will download it the first time you use Copy text.',
+      mbInformation, MB_OK, IDOK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('ffmpeg') then InstallFfmpeg;
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('ocrdata') then InstallOcrData;
 end;
