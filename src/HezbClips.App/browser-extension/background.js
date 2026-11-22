@@ -31,21 +31,25 @@ async function capture(tab) {
   const send = (method, params) => chrome.debugger.sendCommand(target, method, params);
   await badge('…', '#4C8DFF', 'Đang chụp cả trang…');
   let attached = false;
+  let scrollBack = null; // where the user had scrolled to
   try {
     await chrome.debugger.attach(target, '1.3');
     attached = true;
     await send('Page.enable');
 
     // load lazy images: walk down the page once, then back to the top
-    await send('Runtime.evaluate', {
-      awaitPromise: true,
+    const walk = await send('Runtime.evaluate', {
+      awaitPromise: true, returnByValue: true,
       expression: `(async () => {
+        const from = [scrollX, scrollY];
         const full = () => Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
         const step = Math.max(400, innerHeight * 0.8);
         for (let y = 0; y < Math.min(full(), ${MAX_CSS_HEIGHT}); y += step) { scrollTo(0, y); await new Promise(r => setTimeout(r, 120)); }
         scrollTo(0, 0); await new Promise(r => setTimeout(r, 350));
+        return from;
       })()`,
     });
+    scrollBack = walk && walk.result && walk.result.value;
 
     const metrics = await send('Page.getLayoutMetrics');
     const size = metrics.cssContentSize || metrics.contentSize;
@@ -80,6 +84,10 @@ async function capture(tab) {
       ? 'Không kết nối được Hezb Clips. Hãy mở ứng dụng và bật "Chụp cả trang qua trình duyệt".' : msg;
     await badge('!', '#E5484D', hint);
   } finally {
-    if (attached) { try { await chrome.debugger.detach(target); } catch (_) { /* tab closed */ } }
+    if (attached) {
+      // the walk down the page moved the scroll position: put it back where the user had it
+      if (scrollBack) { try { await send('Runtime.evaluate', { expression: `scrollTo(${Number(scrollBack[0]) || 0}, ${Number(scrollBack[1]) || 0})` }); } catch (_) { /* tab closed */ } }
+      try { await chrome.debugger.detach(target); } catch (_) { /* tab closed */ }
+    }
   }
 }
