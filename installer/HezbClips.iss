@@ -34,6 +34,7 @@ PrivilegesRequiredOverridesAllowed=dialog
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+LicenseFile=..\LICENSE
 ; the app holds this mutex while running: setup offers to close it before updating files
 AppMutex=HezbClips.SingleInstance
 CloseApplications=yes
@@ -46,6 +47,8 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 
 [Files]
 Source: "..\artifacts\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\HezbClips.exe"
