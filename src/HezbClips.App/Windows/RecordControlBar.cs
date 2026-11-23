@@ -14,7 +14,7 @@ using HezbClips.Core.Settings;
 namespace HezbClips.App.Windows;
 
 /// <summary>Everything the user picked on the record bar.</summary>
-public record RecordChoices(AudioSources Audio, ExportQuality Quality, bool Gif, int GifFps, int GifWidth, bool Clicks, bool Keys, bool Webcam);
+public record RecordChoices(AudioSources Audio, ExportQuality Quality, bool Gif, int GifFps, int GifWidth, bool Clicks, bool Keys, bool Webcam, WebcamLayout Cam);
 
 /// <summary>Bar shown after picking a region: choose audio, quality, GIF options and effects, press Record,
 /// then Pause / Stop. Excluded from screen capture (WDA_EXCLUDEFROMCAPTURE) so it never appears in the video.</summary>
@@ -37,6 +37,12 @@ public sealed class RecordControlBar : Window
     readonly ToggleButton _clicks = new() { Content = "Click", Margin = new Thickness(0, 0, 6, 0), ToolTip = "Hiện vòng tròn khi bấm chuột trong video" };
     readonly ToggleButton _keys = new() { Content = Ui.Content("\uE765 Phím"), Margin = new Thickness(0, 0, 6, 0), ToolTip = "Hiện phím bấm trong video" };
     readonly ToggleButton _cam = new() { Content = Ui.Content("\uE8B8 Webcam"), ToolTip = "Hiện webcam ở góc vùng quay" };
+    static readonly string[] ShapeNames = { "Tròn", "Bo góc", "Chữ nhật 16:9" };
+    static readonly string[] CornerNames = { "Dưới phải", "Dưới trái", "Trên phải", "Trên trái" };
+    static readonly string[] SizeNames = { "Nhỏ", "Vừa", "Lớn" };
+    readonly ComboBox _camShape = new() { Margin = new Thickness(6, 0, 0, 0), Width = 118, Visibility = Visibility.Collapsed, ToolTip = "Hình dạng webcam" };
+    readonly ComboBox _camCorner = new() { Margin = new Thickness(6, 0, 0, 0), Width = 96, Visibility = Visibility.Collapsed, ToolTip = "Vị trí webcam (vẫn kéo thả được khi đang quay)" };
+    readonly ComboBox _camSize = new() { Margin = new Thickness(6, 0, 0, 0), Width = 74, Visibility = Visibility.Collapsed, ToolTip = "Kích thước webcam" };
     readonly System.Windows.Shapes.Ellipse _dot = new() { Width = 9, Height = 9, Fill = Ui.Brush("Disabled"), VerticalAlignment = VerticalAlignment.Center };
     readonly TextBlock _timer = new() { Text = "00:00", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0), FontFamily = new FontFamily("Consolas"), FontSize = 15, Foreground = Ui.Brush("Text") };
     readonly Button _go = new() { Content = Ui.Content("\uE7C8 Quay"), Padding = new Thickness(16, 6, 16, 6), Style = Ui.Style("DangerButton") };
@@ -64,6 +70,11 @@ public sealed class RecordControlBar : Window
         AutomationProperties.SetName(_go, "Quay"); AutomationProperties.SetName(_pause, "Tạm dừng"); AutomationProperties.SetName(_cancel, "Hủy");
         _sys.IsChecked = s.CaptureSystemAudio; _mic.IsChecked = s.CaptureMicrophone;
         _clicks.IsChecked = s.ShowClicks; _keys.IsChecked = s.ShowKeys; _cam.IsChecked = s.Webcam;
+        foreach (var n in ShapeNames) _camShape.Items.Add(n);
+        foreach (var n in CornerNames) _camCorner.Items.Add(n);
+        foreach (var n in SizeNames) _camSize.Items.Add(n);
+        _camShape.SelectedIndex = (int)s.WebcamShape; _camCorner.SelectedIndex = (int)s.WebcamCorner; _camSize.SelectedIndex = (int)s.WebcamSize;
+        AutomationProperties.SetName(_camShape, "Hình dạng webcam"); AutomationProperties.SetName(_camCorner, "Vị trí webcam"); AutomationProperties.SetName(_camSize, "Kích thước webcam");
         _quality.Items.Add("1080p"); _quality.Items.Add("2K"); _quality.Items.Add("4K");
         _quality.SelectedIndex = s.VideoQuality switch { ExportQuality.P1440 => 1, ExportQuality.P2160 => 2, _ => 0 };
         foreach (var f in GifFpsValues) _gifFps.Items.Add($"{f} fps");
@@ -72,7 +83,7 @@ public sealed class RecordControlBar : Window
         _gifWidth.SelectedIndex = Math.Max(0, Array.IndexOf(GifWidthValues, s.GifWidth));
 
         var options = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var c in new UIElement[] { _sys, _mic, _gif, _quality, _gifFps, _gifWidth, _clicks, _keys, _cam }) options.Children.Add(c);
+        foreach (var c in new UIElement[] { _sys, _mic, _gif, _quality, _gifFps, _gifWidth, _clicks, _keys, _cam, _camShape, _camCorner, _camSize }) options.Children.Add(c);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var c in new UIElement[] { _dot, _timer, _go, _pause, _cancel }) actions.Children.Add(c);
         var col = new StackPanel(); col.Children.Add(options); col.Children.Add(actions);
@@ -83,6 +94,8 @@ public sealed class RecordControlBar : Window
             var g = _gif.IsChecked == true;
             ApplyGifState(g);
         };
+        _cam.Click += (_, _) => ApplyCamState();
+        ApplyCamState();
         _go.Click += (_, _) => OnGo();
         _pause.Click += (_, _) => { SetPaused(!_paused); PauseToggled?.Invoke(_paused); };
         _cancel.Click += (_, _) => Cancelled?.Invoke();
@@ -93,6 +106,13 @@ public sealed class RecordControlBar : Window
         };
         SourceInitialized += (_, _) => SetWindowDisplayAffinity(new WindowInteropHelper(this).Handle, WDA_EXCLUDEFROMCAPTURE);
         Loaded += (_, _) => PlaceNearRegion();
+    }
+
+    void ApplyCamState()
+    {
+        var v = _cam.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        _camShape.Visibility = _camCorner.Visibility = _camSize.Visibility = v;
+        Dispatcher.BeginInvoke(PlaceNearRegion, DispatcherPriority.Loaded);
     }
 
     void ApplyGifState(bool g)
@@ -124,9 +144,10 @@ public sealed class RecordControlBar : Window
         var a = (_sys.IsChecked == true ? AudioSources.System : 0) | (_mic.IsChecked == true ? AudioSources.Microphone : 0);
         var isGif = _gif.IsChecked == true;
         var choices = new RecordChoices(a, q, isGif, GifFpsValues[Math.Max(0, _gifFps.SelectedIndex)], GifWidthValues[Math.Max(0, _gifWidth.SelectedIndex)],
-            _clicks.IsChecked == true, _keys.IsChecked == true, _cam.IsChecked == true);
+            _clicks.IsChecked == true, _keys.IsChecked == true, _cam.IsChecked == true,
+            new WebcamLayout((WebcamShape)Math.Max(0, _camShape.SelectedIndex), (WebcamCorner)Math.Max(0, _camCorner.SelectedIndex), (WebcamSize)Math.Max(0, _camSize.SelectedIndex)));
         _recording = true; _sw.Restart(); _tick.Start();
-        foreach (var c in new Control[] { _sys, _mic, _quality, _gif, _gifFps, _gifWidth, _clicks, _keys, _cam, _cancel }) c.IsEnabled = false;
+        foreach (var c in new Control[] { _sys, _mic, _quality, _gif, _gifFps, _gifWidth, _clicks, _keys, _cam, _camShape, _camCorner, _camSize, _cancel }) c.IsEnabled = false;
         _go.Content = Ui.Content("\uE71A Dừng"); AutomationProperties.SetName(_go, "Dừng"); _dot.Fill = Ui.Brush("Danger"); _pause.Visibility = Visibility.Visible;
         Dispatcher.BeginInvoke(PlaceNearRegion, DispatcherPriority.Loaded);
         RecordClicked?.Invoke(choices);

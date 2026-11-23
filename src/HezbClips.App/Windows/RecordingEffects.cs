@@ -14,6 +14,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using HezbClips.Core.Settings;
 using Windows.Graphics.Imaging;
 using Windows.Media.Capture;
 using Windows.Media.Capture.Frames;
@@ -38,15 +39,16 @@ public sealed class RecordingEffects : IDisposable
 
     readonly System.Drawing.Rectangle _region;
     readonly bool _clicks, _keys, _webcam;
+    readonly WebcamLayout _layout;
     readonly Action<string> _notify;
     HookProc? _mouseProc, _keyProc; // kept in fields so the GC cannot collect the delegates
     IntPtr _mouseHook, _keyHook;
     EffectsWindow? _window;
     WebcamWindow? _cam;
 
-    public RecordingEffects(System.Drawing.Rectangle region, bool clicks, bool keys, bool webcam, Action<string> notify)
+    public RecordingEffects(System.Drawing.Rectangle region, bool clicks, bool keys, bool webcam, WebcamLayout layout, Action<string> notify)
     {
-        _region = region; _clicks = clicks; _keys = keys; _webcam = webcam; _notify = notify;
+        _region = region; _clicks = clicks; _keys = keys; _webcam = webcam; _layout = layout; _notify = notify;
     }
 
     public void Start()
@@ -68,7 +70,7 @@ public sealed class RecordingEffects : IDisposable
         }
         if (_webcam)
         {
-            _cam = new WebcamWindow(_region);
+            _cam = new WebcamWindow(_region, _layout);
             _ = _cam.StartAsync().ContinueWith(t =>
             {
                 if (t.IsFaulted) Application.Current.Dispatcher.Invoke(() =>
@@ -215,10 +217,10 @@ public sealed class RecordingEffects : IDisposable
 
     // ------------------------------------------------------------------
 
-    /// <summary>Round webcam preview in the corner of the region; drag it to move. Recorded along with the screen.</summary>
+    /// <summary>Webcam preview (round, rounded square or wide) in a corner of the region; drag it to move. Recorded along with the screen.</summary>
     sealed class WebcamWindow : Window
     {
-        const int Size = 190;
+        readonly WebcamLayout _layout;
         readonly System.Drawing.Rectangle _region;
         readonly Image _img = new() { Stretch = Stretch.UniformToFill };
         MediaCapture? _capture;
@@ -226,23 +228,24 @@ public sealed class RecordingEffects : IDisposable
         WriteableBitmap? _wb;
         volatile bool _pending;
 
-        [DllImport("gdi32.dll")] static extern IntPtr CreateEllipticRgn(int l, int t, int r, int b);
+        [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
         [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr h, IntPtr rgn, bool redraw);
 
-        public WebcamWindow(System.Drawing.Rectangle region)
+        public WebcamWindow(System.Drawing.Rectangle region, WebcamLayout layout)
         {
-            _region = region;
+            _region = region; _layout = layout;
+            var (w, h) = layout.Dimensions(); var radius = layout.CornerRadius();
             // A normal (not per-pixel-transparent) window: layered/transparent WPF windows are painted in software and only
             // partly refreshed when a bitmap changes 30 times a second, which left most of the bubble black. The round shape
             // comes from a window region instead, so the picture is drawn by the GPU like any other window.
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; ShowInTaskbar = false; Topmost = true; ShowActivated = false;
-            AllowsTransparency = false; Background = Brushes.Black; Width = Size; Height = Size; WindowStartupLocation = WindowStartupLocation.Manual;
+            AllowsTransparency = false; Background = Brushes.Black; Width = w; Height = h; WindowStartupLocation = WindowStartupLocation.Manual;
             Content = new Grid
             {
                 Children =
                 {
                     _img,
-                    new Ellipse { Stroke = Brushes.White, StrokeThickness = 5, IsHitTestVisible = false }, // white ring just inside the round edge
+                    new Rectangle { Stroke = Brushes.White, StrokeThickness = 5, RadiusX = radius, RadiusY = radius, IsHitTestVisible = false }, // white ring just inside the edge
                 },
             };
             MouseLeftButtonDown += (_, _) => { try { DragMove(); } catch (InvalidOperationException) { } };
@@ -250,10 +253,11 @@ public sealed class RecordingEffects : IDisposable
             Loaded += (_, _) =>
             {
                 var k = VisualTreeHelper.GetDpi(this).DpiScaleX;
-                int px = (int)Math.Ceiling(Size * k);
+                int pw = (int)Math.Ceiling(w * k), ph = (int)Math.Ceiling(h * k), pr = (int)Math.Ceiling(radius * 2 * k);
                 var hwnd = new WindowInteropHelper(this).Handle;
-                SetWindowRgn(hwnd, CreateEllipticRgn(0, 0, px + 1, px + 1), true);
-                WinNative.SetWindowPos(hwnd, WinNative.HWND_TOPMOST, _region.Right - px - 12, _region.Bottom - px - 12, 0, 0, 0x0001 /*NOSIZE*/ | WinNative.SWP_NOACTIVATE);
+                SetWindowRgn(hwnd, CreateRoundRectRgn(0, 0, pw + 1, ph + 1, pr, pr), true);
+                var (x, y) = _layout.Position(_region, pw, ph);
+                WinNative.SetWindowPos(hwnd, WinNative.HWND_TOPMOST, x, y, 0, 0, 0x0001 /*NOSIZE*/ | WinNative.SWP_NOACTIVATE);
             };
         }
 

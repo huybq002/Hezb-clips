@@ -10,6 +10,11 @@ namespace HezbClips.Capture;
 /// The buffer passed to the callback is reused: the consumer must copy or write it synchronously.</summary>
 public sealed class WgcFrameSource : IVideoFrameSource
 {
+    // default Windows timer ticks are ~15.6 ms: Thread.Sleep for 33 ms frames then lands on 31 or 47 ms and the video judders
+    [System.Runtime.InteropServices.DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
+    [System.Runtime.InteropServices.DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);
+    bool _fineTimer;
+
     readonly object _lock = new();
     Direct3D11CaptureFramePool? _pool;
     GraphicsCaptureSession? _session;
@@ -45,6 +50,7 @@ public sealed class WgcFrameSource : IVideoFrameSource
         _session = _pool.CreateCaptureSession(item);
         _session.StartCapture();
 
+        timeBeginPeriod(1); _fineTimer = true;
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
         _pump = Task.Run(() =>
@@ -64,6 +70,7 @@ public sealed class WgcFrameSource : IVideoFrameSource
     {
         _cts?.Cancel();
         try { _pump?.Wait(2000); } catch (AggregateException) { }
+        if (_fineTimer) { timeEndPeriod(1); _fineTimer = false; }
         _session?.Dispose(); _pool?.Dispose();
         lock (_lock) { _reader?.Dispose(); }
         _dev?.Dispose();

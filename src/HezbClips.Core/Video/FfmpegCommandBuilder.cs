@@ -16,8 +16,12 @@ public static class FfmpegCommandBuilder
             throw new ArgumentException($"source size must be even, got {srcW}x{srcH}");
         if (scaleTo is { } t && (t.W % 2 != 0 || t.H % 2 != 0))
             throw new ArgumentException($"target size must be even, got {t.W}x{t.H}");
-        var vf = scaleTo is { } s ? $"-vf scale={s.W}:{s.H}:flags=lanczos " : "";
-        return $"-y -f rawvideo -pix_fmt bgra -s {srcW}x{srcH} -r {fps} -i - {vf}{EncoderArgs(enc)} -pix_fmt yuv420p -movflags +faststart \"{outPath}\"";
+        // RGB -> YUV with the BT.709 matrix and TV range, and tag the stream the same way: untagged video converted with the
+        // default BT.601 matrix is shown with shifted colours by players, which assume BT.709 for HD sizes
+        var size = scaleTo is { } s ? $"{s.W}:{s.H}:flags=lanczos:" : "";
+        var vf = $"-vf scale={size}out_color_matrix=bt709:out_range=tv ";
+        return $"-y -f rawvideo -pix_fmt bgra -s {srcW}x{srcH} -r {fps} -i - {vf}{EncoderArgs(enc)} -pix_fmt yuv420p " +
+               $"-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv -movflags +faststart \"{outPath}\"";
     }
 
     /// <param name="audioLead">How much earlier the audio capture began than the first video frame (negative: later).

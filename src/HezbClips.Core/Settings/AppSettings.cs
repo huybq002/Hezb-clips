@@ -39,6 +39,9 @@ public class AppSettings
     public bool ShowClicks { get; set; } = true;
     public bool ShowKeys { get; set; } = false;
     public bool Webcam { get; set; } = false;
+    public WebcamShape WebcamShape { get; set; } = WebcamShape.Circle;
+    public WebcamCorner WebcamCorner { get; set; } = WebcamCorner.BottomRight;
+    public WebcamSize WebcamSize { get; set; } = WebcamSize.Medium;
     public int LibraryRetentionDays { get; set; } = 0;
     public string UpdateFeedUrl { get; set; } = "";
     public bool AutoCheckUpdates { get; set; } = true;

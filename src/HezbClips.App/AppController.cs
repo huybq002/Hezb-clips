@@ -296,12 +296,17 @@ public sealed class AppController : IDisposable
         _restoreMain = false;
         if (_main is not null)
         {
+            var front = ResultWindow();
+            // with a fresh editor / popup on screen the main window comes back behind it, without taking focus
+            if (front is not null) _main.ShowActivated = false;
             _main.Show(); _main.RefreshLibrary();
-            // the editor / popup of the picture just taken must stay in front of the main window that comes back
-            if (_editor is { IsVisible: true }) Front(_editor);
-            else if (_popup is { IsVisible: true }) Front(_popup);
+            _main.ShowActivated = true;
+            if (front is not null) ShowResult(front);
         }
     }
+
+    /// <summary>The editor or popup of the picture / clip just taken, when it is still open.</summary>
+    Window? ResultWindow() => _editor is { IsVisible: true } ? _editor : _popup is { IsVisible: true } ? _popup : null;
 
     ImageEditorWindow? _editor; Window? _popup;
 
@@ -310,6 +315,17 @@ public sealed class AppController : IDisposable
     {
         if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
         w.Topmost = true; w.Topmost = false; w.Activate(); w.Focus();
+    }
+
+    /// <summary>Bring the new result window (editor / popup) to the top and slide the main window right behind it.</summary>
+    void ShowResult(Window w)
+    {
+        Front(w);
+        if (_main is { IsVisible: true } && !ReferenceEquals(_main, w))
+        {
+            const uint NOMOVE = 0x2, NOSIZE = 0x1, NOACTIVATE = 0x10;
+            WinNative.SetWindowPos(new System.Windows.Interop.WindowInteropHelper(_main).Handle, new System.Windows.Interop.WindowInteropHelper(w).Handle, 0, 0, 0, 0, NOMOVE | NOSIZE | NOACTIVATE);
+        }
     }
 
     /// <summary>Captured image: copy / pin / open the editor (or the quick popup when the editor is turned off).</summary>
@@ -409,7 +425,7 @@ public sealed class AppController : IDisposable
         try
         {
             // remember what the user picked for next time
-            _s.GifFps = c.GifFps; _s.GifWidth = c.GifWidth; _s.ShowClicks = c.Clicks; _s.ShowKeys = c.Keys; _s.Webcam = c.Webcam;
+            _s.GifFps = c.GifFps; _s.GifWidth = c.GifWidth; _s.ShowClicks = c.Clicks; _s.ShowKeys = c.Keys; _s.Webcam = c.Webcam; _s.WebcamShape = c.Cam.Shape; _s.WebcamCorner = c.Cam.Corner; _s.WebcamSize = c.Cam.Size;
             if (!c.Gif) { _s.VideoQuality = c.Quality; _s.CaptureSystemAudio = c.Audio.HasFlag(AudioSources.System); _s.CaptureMicrophone = c.Audio.HasFlag(AudioSources.Microphone); }
             try { _store.Save(_s); } catch (Exception) { /* not worth failing the recording over */ }
 
@@ -511,7 +527,7 @@ public sealed class AppController : IDisposable
         if (!(c.Clicks || c.Keys || c.Webcam)) return;
         try
         {
-            _effects = new RecordingEffects(region, c.Clicks, c.Keys, c.Webcam, msg => Toast.Show(msg));
+            _effects = new RecordingEffects(region, c.Clicks, c.Keys, c.Webcam, c.Cam, msg => Toast.Show(msg));
             _effects.Start();
         }
         catch (Exception ex) { Report("Không bật được hiệu ứng khi quay", ex); }
@@ -525,7 +541,7 @@ public sealed class AppController : IDisposable
     {
         var popup = new PostCapturePopup(path, video, note, TrimVideo, OpenEditor);
         _popup = popup;
-        popup.Show();
+        popup.Show(); ShowResult(popup);
     }
 
     string? ConvertToGif(string mp4)
@@ -734,7 +750,7 @@ public sealed class AppController : IDisposable
         {
             var w = new ImageEditorWindow(imagePath, _s.EditorKeys, _s.AutoCopyAfterCapture);
             _editor = w;
-            w.Show(); Front(w);
+            w.Show(); ShowResult(w);
         }
         catch (Exception ex) { Report("Không mở được trình chỉnh sửa", ex); }
     }

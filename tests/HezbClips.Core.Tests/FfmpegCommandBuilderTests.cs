@@ -22,8 +22,18 @@ public class FfmpegCommandBuilderTests
         Assert.Contains("h264_nvenc", a);
     }
 
-    [Fact] public void Native_args_have_no_scale() => Assert.DoesNotContain("scale=",
+    [Fact] public void Native_args_do_not_resize() => Assert.DoesNotContain("flags=lanczos",
         FfmpegCommandBuilder.VideoPipeArgs(1920, 1080, 30, null, VideoEncoder.Libx264, "o.mp4"));
+
+    [Fact] public void Video_is_converted_and_tagged_as_bt709()
+    {
+        foreach (var size in new (int, int)?[] { null, (3840, 2160) })
+        {
+            var a = FfmpegCommandBuilder.VideoPipeArgs(1920, 1080, 30, size, VideoEncoder.Libx264, "o.mp4");
+            Assert.Contains("out_color_matrix=bt709", a);
+            Assert.Contains("-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv", a);
+        }
+    }
 
     [Fact] public void Mux_both_audio_uses_amix()
     {

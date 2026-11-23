@@ -95,7 +95,7 @@ public class VideoRecorderTests
         var h = new Harness();
         h.Recorder.Start(Req(new Rectangle(0, 0, 1920, 1080), ExportQuality.P2160, RecordMode.Background));
         var r = await h.Recorder.StopAsync();
-        Assert.DoesNotContain("scale=", h.FirstVideoArgs);
+        Assert.DoesNotContain("flags=lanczos", h.FirstVideoArgs);
         Assert.NotNull(r.PendingUpscaleJob);
     }
 
@@ -114,7 +114,7 @@ public class VideoRecorderTests
         h.Frames.EmitWithDrops(total: 60, dropped: 10);
         var r = await h.Recorder.StopAsync();
         Assert.Equal(2, h.VideoProcessCount);
-        Assert.DoesNotContain("scale=", h.SecondVideoArgs);
+        Assert.DoesNotContain("flags=lanczos", h.SecondVideoArgs);
         Assert.NotNull(r.PendingUpscaleJob);
     }
 
